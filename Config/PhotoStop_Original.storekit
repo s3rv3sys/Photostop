@@ -1,0 +1,174 @@
+{
+  "identifier" : "PhotoStop",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "6736123456",
+      "localizations" : [
+        {
+          "description" : "10 extra Premium AI credits for high-quality photo enhancements",
+          "displayName" : "10 Premium Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.photostop.credits.premium10",
+      "referenceName" : "10 Premium Credits",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "6736123457",
+      "localizations" : [
+        {
+          "description" : "50 extra Premium AI credits for high-quality photo enhancements",
+          "displayName" : "50 Premium Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.photostop.credits.premium50",
+      "referenceName" : "50 Premium Credits",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6736123450",
+    "_developerTeamID" : "ABCD123456",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 748094400.0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21482975",
+      "localizations" : [
+        {
+          "description" : "PhotoStop Pro subscription with unlimited AI editing",
+          "displayName" : "PhotoStop Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "PhotoStop Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6736123451",
+          "introductoryOffer" : {
+            "internalID" : "20593412",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "PhotoStop Pro Monthly - 500 budget AI edits and 300 premium credits per month",
+              "displayName" : "PhotoStop Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.photostop.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "PhotoStop Pro Monthly",
+          "subscriptionGroupID" : "21482975",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+            {
+              "displayPrice" : "39.99",
+              "internalID" : "20593413",
+              "offerID" : "intro-yearly-50off",
+              "paymentMode" : "payUpFront",
+              "referenceName" : "Yearly Intro 50% Off",
+              "subscriptionPeriod" : "P1M"
+            }
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "79.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6736123452",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "PhotoStop Pro Yearly - 500 budget AI edits and 300 premium credits per month, billed annually",
+              "displayName" : "PhotoStop Pro Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.photostop.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "PhotoStop Pro Yearly",
+          "subscriptionGroupID" : "21482975",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
+

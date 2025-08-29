@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background gradient -->
+    <radialGradient id="backgroundGradient" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" style="stop-color:#3D1F64;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1C1C3A;stop-opacity:1" />
+    </radialGradient>
+    
+    <!-- Cyan glow gradient -->
+    <radialGradient id="glowGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#00FFC6;stop-opacity:0.8" />
+      <stop offset="50%" style="stop-color:#00B0FF;stop-opacity:0.6" />
+      <stop offset="100%" style="stop-color:#00B0FF;stop-opacity:0.2" />
+    </radialGradient>
+    
+    <!-- Aperture blade gradient -->
+    <linearGradient id="bladeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F5F5DC;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Red dot gradient -->
+    <radialGradient id="redDotGradient" cx="30%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#FF6B6B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF3B30;stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Rounded rectangle background -->
+  <rect width="1024" height="1024" rx="180" ry="180" fill="url(#backgroundGradient)"/>
+  
+  <!-- Cyan glow ring -->
+  <circle cx="512" cy="512" r="220" fill="none" stroke="url(#glowGradient)" stroke-width="12" opacity="0.8"/>
+  
+  <!-- Camera aperture blades -->
+  <g transform="translate(512,512)">
+    <!-- Blade 1 -->
+    <path d="M 0,-150 L -60,-60 L 0,-30 L 60,-60 Z" fill="url(#bladeGradient)" transform="rotate(0)"/>
+    <!-- Blade 2 -->
+    <path d="M 0,-150 L -60,-60 L 0,-30 L 60,-60 Z" fill="url(#bladeGradient)" transform="rotate(45)"/>
+    <!-- Blade 3 -->
+    <path d="M 0,-150 L -60,-60 L 0,-30 L 60,-60 Z" fill="url(#bladeGradient)" transform="rotate(90)"/>
+    <!-- Blade 4 -->
+    <path d="M 0,-150 L -60,-60 L 0,-30 L 60,-60 Z" fill="url(#bladeGradient)" transform="rotate(135)"/>
+    <!-- Blade 5 -->
+    <path d="M 0,-150 L -60,-60 L 0,-30 L 60,-60 Z" fill="url(#bladeGradient)" transform="rotate(180)"/>
+    <!-- Blade 6 -->
+    <path d="M 0,-150 L -60,-60 L 0,-30 L 60,-60 Z" fill="url(#bladeGradient)" transform="rotate(225)"/>
+    <!-- Blade 7 -->
+    <path d="M 0,-150 L -60,-60 L 0,-30 L 60,-60 Z" fill="url(#bladeGradient)" transform="rotate(270)"/>
+    <!-- Blade 8 -->
+    <path d="M 0,-150 L -60,-60 L 0,-30 L 60,-60 Z" fill="url(#bladeGradient)" transform="rotate(315)"/>
+    
+    <!-- Center circle (aperture opening) -->
+    <circle cx="0" cy="0" r="30" fill="#2C2C54" opacity="0.8"/>
+  </g>
+  
+  <!-- Red indicator dot -->
+  <circle cx="720" cy="720" r="45" fill="url(#redDotGradient)"/>
+  
+  <!-- Subtle highlight on red dot -->
+  <circle cx="710" cy="710" r="15" fill="#FFFFFF" opacity="0.3"/>
+</svg>
+

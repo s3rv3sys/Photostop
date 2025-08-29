@@ -1,0 +1,623 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1A2B3C4D5E6F7890 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7891 /* AppDelegate.swift */; };
+		1A2B3C4D5E6F7892 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7893 /* SceneDelegate.swift */; };
+		1A2B3C4D5E6F7894 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7895 /* ContentView.swift */; };
+		1A2B3C4D5E6F7896 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7897 /* Assets.xcassets */; };
+		1A2B3C4D5E6F7898 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7899 /* LaunchScreen.storyboard */; };
+		
+		/* Models */
+		2A3B4C5D6E7F8901 /* EditedImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A3B4C5D6E7F8902 /* EditedImage.swift */; };
+		2A3B4C5D6E7F8903 /* EditPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A3B4C5D6E7F8904 /* EditPrompt.swift */; };
+		2A3B4C5D6E7F8905 /* FrameScore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A3B4C5D6E7F8906 /* FrameScore.swift */; };
+		
+		/* Services */
+		3A4B5C6D7E8F9012 /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B5C6D7E8F9013 /* CameraService.swift */; };
+		3A4B5C6D7E8F9014 /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B5C6D7E8F9015 /* AIService.swift */; };
+		3A4B5C6D7E8F9016 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B5C6D7E8F9017 /* StorageService.swift */; };
+		3A4B5C6D7E8F9018 /* FrameScoringService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B5C6D7E8F9019 /* FrameScoringService.swift */; };
+		3A4B5C6D7E8F9020 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B5C6D7E8F9021 /* KeychainService.swift */; };
+		
+		/* Routing Services */
+		4A5B6C7D8E9F0123 /* RoutingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0124 /* RoutingService.swift */; };
+		4A5B6C7D8E9F0125 /* UsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0126 /* UsageTracker.swift */; };
+		4A5B6C7D8E9F0127 /* ResultCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0128 /* ResultCache.swift */; };
+		4A5B6C7D8E9F0129 /* ImageEditProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0130 /* ImageEditProvider.swift */; };
+		4A5B6C7D8E9F0131 /* OnDeviceProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0132 /* OnDeviceProvider.swift */; };
+		4A5B6C7D8E9F0133 /* GeminiProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0134 /* GeminiProvider.swift */; };
+		4A5B6C7D8E9F0135 /* OpenAIImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0136 /* OpenAIImageProvider.swift */; };
+		4A5B6C7D8E9F0137 /* FalFluxProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0138 /* FalFluxProvider.swift */; };
+		4A5B6C7D8E9F0139 /* ClipdropProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B6C7D8E9F0140 /* ClipdropProvider.swift */; };
+		
+		/* Payment Services */
+		5A6B7C8D9E0F1234 /* Entitlements.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6B7C8D9E0F1235 /* Entitlements.swift */; };
+		5A6B7C8D9E0F1236 /* StoreKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6B7C8D9E0F1237 /* StoreKitService.swift */; };
+		5A6B7C8D9E0F1238 /* SubscriptionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6B7C8D9E0F1239 /* SubscriptionViewModel.swift */; };
+		
+		/* Social Services */
+		6A7B8C9D0E1F2345 /* SocialShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A7B8C9D0E1F2346 /* SocialShareService.swift */; };
+		
+		/* ViewModels */
+		7A8B9C0D1E2F3456 /* CameraViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8B9C0D1E2F3457 /* CameraViewModel.swift */; };
+		7A8B9C0D1E2F3458 /* EditViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8B9C0D1E2F3459 /* EditViewModel.swift */; };
+		7A8B9C0D1E2F3460 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8B9C0D1E2F3461 /* SettingsViewModel.swift */; };
+		
+		/* Views */
+		8A9B0C1D2E3F4567 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A9B0C1D2E3F4568 /* CameraView.swift */; };
+		8A9B0C1D2E3F4569 /* ResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A9B0C1D2E3F4570 /* ResultView.swift */; };
+		8A9B0C1D2E3F4571 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A9B0C1D2E3F4572 /* SettingsView.swift */; };
+		8A9B0C1D2E3F4573 /* GalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A9B0C1D2E3F4574 /* GalleryView.swift */; };
+		
+		/* Subscription Views */
+		9A0B1C2D3E4F5678 /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0B1C2D3E4F5679 /* PaywallView.swift */; };
+		9A0B1C2D3E4F5680 /* ManageSubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0B1C2D3E4F5681 /* ManageSubscriptionView.swift */; };
+		9A0B1C2D3E4F5682 /* CreditsShopView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0B1C2D3E4F5683 /* CreditsShopView.swift */; };
+		
+		/* Configuration */
+		0B1C2D3E4F567890 /* PhotoStop.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 0B1C2D3E4F567891 /* PhotoStop.storekit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1A2B3C4D5E6F7891 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F7893 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F7895 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F7897 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1A2B3C4D5E6F7899 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		1A2B3C4D5E6F7900 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		
+		/* Models */
+		2A3B4C5D6E7F8902 /* EditedImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditedImage.swift; sourceTree = "<group>"; };
+		2A3B4C5D6E7F8904 /* EditPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditPrompt.swift; sourceTree = "<group>"; };
+		2A3B4C5D6E7F8906 /* FrameScore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameScore.swift; sourceTree = "<group>"; };
+		
+		/* Services */
+		3A4B5C6D7E8F9013 /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraService.swift; sourceTree = "<group>"; };
+		3A4B5C6D7E8F9015 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
+		3A4B5C6D7E8F9017 /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageService.swift; sourceTree = "<group>"; };
+		3A4B5C6D7E8F9019 /* FrameScoringService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameScoringService.swift; sourceTree = "<group>"; };
+		3A4B5C6D7E8F9021 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		
+		/* Routing Services */
+		4A5B6C7D8E9F0124 /* RoutingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingService.swift; sourceTree = "<group>"; };
+		4A5B6C7D8E9F0126 /* UsageTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageTracker.swift; sourceTree = "<group>"; };
+		4A5B6C7D8E9F0128 /* ResultCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultCache.swift; sourceTree = "<group>"; };
+		4A5B6C7D8E9F0130 /* ImageEditProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageEditProvider.swift; sourceTree = "<group>"; };
+		4A5B6C7D8E9F0132 /* OnDeviceProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceProvider.swift; sourceTree = "<group>"; };
+		4A5B6C7D8E9F0134 /* GeminiProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiProvider.swift; sourceTree = "<group>"; };
+		4A5B6C7D8E9F0136 /* OpenAIImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIImageProvider.swift; sourceTree = "<group>"; };
+		4A5B6C7D8E9F0138 /* FalFluxProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FalFluxProvider.swift; sourceTree = "<group>"; };
+		4A5B6C7D8E9F0140 /* ClipdropProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipdropProvider.swift; sourceTree = "<group>"; };
+		
+		/* Payment Services */
+		5A6B7C8D9E0F1235 /* Entitlements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entitlements.swift; sourceTree = "<group>"; };
+		5A6B7C8D9E0F1237 /* StoreKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitService.swift; sourceTree = "<group>"; };
+		5A6B7C8D9E0F1239 /* SubscriptionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionViewModel.swift; sourceTree = "<group>"; };
+		
+		/* Social Services */
+		6A7B8C9D0E1F2346 /* SocialShareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialShareService.swift; sourceTree = "<group>"; };
+		
+		/* ViewModels */
+		7A8B9C0D1E2F3457 /* CameraViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraViewModel.swift; sourceTree = "<group>"; };
+		7A8B9C0D1E2F3459 /* EditViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditViewModel.swift; sourceTree = "<group>"; };
+		7A8B9C0D1E2F3461 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		
+		/* Views */
+		8A9B0C1D2E3F4568 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
+		8A9B0C1D2E3F4570 /* ResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultView.swift; sourceTree = "<group>"; };
+		8A9B0C1D2E3F4572 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		8A9B0C1D2E3F4574 /* GalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryView.swift; sourceTree = "<group>"; };
+		
+		/* Subscription Views */
+		9A0B1C2D3E4F5679 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
+		9A0B1C2D3E4F5681 /* ManageSubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageSubscriptionView.swift; sourceTree = "<group>"; };
+		9A0B1C2D3E4F5683 /* CreditsShopView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreditsShopView.swift; sourceTree = "<group>"; };
+		
+		/* Configuration */
+		0B1C2D3E4F567891 /* PhotoStop.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = PhotoStop.storekit; sourceTree = "<group>"; };
+		
+		/* App Target */
+		ABCDEF1234567890 /* PhotoStop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoStop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		ABCDEF1234567891 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		ABCDEF1234567892 = {
+			isa = PBXGroup;
+			children = (
+				ABCDEF1234567893 /* PhotoStop */,
+				ABCDEF1234567894 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567893 /* PhotoStop */ = {
+			isa = PBXGroup;
+			children = (
+				1A2B3C4D5E6F7891 /* AppDelegate.swift */,
+				1A2B3C4D5E6F7893 /* SceneDelegate.swift */,
+				1A2B3C4D5E6F7895 /* ContentView.swift */,
+				ABCDEF1234567895 /* Models */,
+				ABCDEF1234567896 /* Services */,
+				ABCDEF1234567897 /* ViewModels */,
+				ABCDEF1234567898 /* Views */,
+				ABCDEF1234567899 /* Config */,
+				1A2B3C4D5E6F7897 /* Assets.xcassets */,
+				1A2B3C4D5E6F7899 /* LaunchScreen.storyboard */,
+				1A2B3C4D5E6F7900 /* Info.plist */,
+			);
+			path = PhotoStop;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567894 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				ABCDEF1234567890 /* PhotoStop.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567895 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				2A3B4C5D6E7F8902 /* EditedImage.swift */,
+				2A3B4C5D6E7F8904 /* EditPrompt.swift */,
+				2A3B4C5D6E7F8906 /* FrameScore.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567896 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				3A4B5C6D7E8F9013 /* CameraService.swift */,
+				3A4B5C6D7E8F9015 /* AIService.swift */,
+				3A4B5C6D7E8F9017 /* StorageService.swift */,
+				3A4B5C6D7E8F9019 /* FrameScoringService.swift */,
+				3A4B5C6D7E8F9021 /* KeychainService.swift */,
+				ABCDEF1234567900 /* Routing */,
+				ABCDEF1234567901 /* Payments */,
+				ABCDEF1234567902 /* Social */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567897 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				7A8B9C0D1E2F3457 /* CameraViewModel.swift */,
+				7A8B9C0D1E2F3459 /* EditViewModel.swift */,
+				7A8B9C0D1E2F3461 /* SettingsViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567898 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				8A9B0C1D2E3F4568 /* CameraView.swift */,
+				8A9B0C1D2E3F4570 /* ResultView.swift */,
+				8A9B0C1D2E3F4572 /* SettingsView.swift */,
+				8A9B0C1D2E3F4574 /* GalleryView.swift */,
+				ABCDEF1234567903 /* Subscription */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567899 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				0B1C2D3E4F567891 /* PhotoStop.storekit */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567900 /* Routing */ = {
+			isa = PBXGroup;
+			children = (
+				4A5B6C7D8E9F0124 /* RoutingService.swift */,
+				4A5B6C7D8E9F0126 /* UsageTracker.swift */,
+				4A5B6C7D8E9F0128 /* ResultCache.swift */,
+				ABCDEF1234567904 /* Providers */,
+			);
+			path = Routing;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567901 /* Payments */ = {
+			isa = PBXGroup;
+			children = (
+				5A6B7C8D9E0F1235 /* Entitlements.swift */,
+				5A6B7C8D9E0F1237 /* StoreKitService.swift */,
+				5A6B7C8D9E0F1239 /* SubscriptionViewModel.swift */,
+			);
+			path = Payments;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567902 /* Social */ = {
+			isa = PBXGroup;
+			children = (
+				6A7B8C9D0E1F2346 /* SocialShareService.swift */,
+			);
+			path = Social;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567903 /* Subscription */ = {
+			isa = PBXGroup;
+			children = (
+				9A0B1C2D3E4F5679 /* PaywallView.swift */,
+				9A0B1C2D3E4F5681 /* ManageSubscriptionView.swift */,
+				9A0B1C2D3E4F5683 /* CreditsShopView.swift */,
+			);
+			path = Subscription;
+			sourceTree = "<group>";
+		};
+		ABCDEF1234567904 /* Providers */ = {
+			isa = PBXGroup;
+			children = (
+				4A5B6C7D8E9F0130 /* ImageEditProvider.swift */,
+				4A5B6C7D8E9F0132 /* OnDeviceProvider.swift */,
+				4A5B6C7D8E9F0134 /* GeminiProvider.swift */,
+				4A5B6C7D8E9F0136 /* OpenAIImageProvider.swift */,
+				4A5B6C7D8E9F0138 /* FalFluxProvider.swift */,
+				4A5B6C7D8E9F0140 /* ClipdropProvider.swift */,
+			);
+			path = Providers;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		ABCDEF1234567905 /* PhotoStop */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ABCDEF1234567906 /* Build configuration list for PBXNativeTarget "PhotoStop" */;
+			buildPhases = (
+				ABCDEF1234567907 /* Sources */,
+				ABCDEF1234567891 /* Frameworks */,
+				ABCDEF1234567908 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PhotoStop;
+			productName = PhotoStop;
+			productReference = ABCDEF1234567890 /* PhotoStop.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		ABCDEF1234567909 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					ABCDEF1234567905 = {
+						CreatedOnToolsVersion = 15.0;
+						DevelopmentTeam = NZBE9W77FA;
+					};
+				};
+			};
+			buildConfigurationList = ABCDEF1234567910 /* Build configuration list for PBXProject "PhotoStop" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				es,
+			);
+			mainGroup = ABCDEF1234567892;
+			productRefGroup = ABCDEF1234567894 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				ABCDEF1234567905 /* PhotoStop */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		ABCDEF1234567908 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A2B3C4D5E6F7898 /* LaunchScreen.storyboard in Resources */,
+				1A2B3C4D5E6F7896 /* Assets.xcassets in Resources */,
+				0B1C2D3E4F567890 /* PhotoStop.storekit in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		ABCDEF1234567907 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A2B3C4D5E6F7894 /* ContentView.swift in Sources */,
+				1A2B3C4D5E6F7890 /* AppDelegate.swift in Sources */,
+				1A2B3C4D5E6F7892 /* SceneDelegate.swift in Sources */,
+				
+				/* Models */
+				2A3B4C5D6E7F8901 /* EditedImage.swift in Sources */,
+				2A3B4C5D6E7F8903 /* EditPrompt.swift in Sources */,
+				2A3B4C5D6E7F8905 /* FrameScore.swift in Sources */,
+				
+				/* Services */
+				3A4B5C6D7E8F9012 /* CameraService.swift in Sources */,
+				3A4B5C6D7E8F9014 /* AIService.swift in Sources */,
+				3A4B5C6D7E8F9016 /* StorageService.swift in Sources */,
+				3A4B5C6D7E8F9018 /* FrameScoringService.swift in Sources */,
+				3A4B5C6D7E8F9020 /* KeychainService.swift in Sources */,
+				
+				/* Routing Services */
+				4A5B6C7D8E9F0123 /* RoutingService.swift in Sources */,
+				4A5B6C7D8E9F0125 /* UsageTracker.swift in Sources */,
+				4A5B6C7D8E9F0127 /* ResultCache.swift in Sources */,
+				4A5B6C7D8E9F0129 /* ImageEditProvider.swift in Sources */,
+				4A5B6C7D8E9F0131 /* OnDeviceProvider.swift in Sources */,
+				4A5B6C7D8E9F0133 /* GeminiProvider.swift in Sources */,
+				4A5B6C7D8E9F0135 /* OpenAIImageProvider.swift in Sources */,
+				4A5B6C7D8E9F0137 /* FalFluxProvider.swift in Sources */,
+				4A5B6C7D8E9F0139 /* ClipdropProvider.swift in Sources */,
+				
+				/* Payment Services */
+				5A6B7C8D9E0F1234 /* Entitlements.swift in Sources */,
+				5A6B7C8D9E0F1236 /* StoreKitService.swift in Sources */,
+				5A6B7C8D9E0F1238 /* SubscriptionViewModel.swift in Sources */,
+				
+				/* Social Services */
+				6A7B8C9D0E1F2345 /* SocialShareService.swift in Sources */,
+				
+				/* ViewModels */
+				7A8B9C0D1E2F3456 /* CameraViewModel.swift in Sources */,
+				7A8B9C0D1E2F3458 /* EditViewModel.swift in Sources */,
+				7A8B9C0D1E2F3460 /* SettingsViewModel.swift in Sources */,
+				
+				/* Views */
+				8A9B0C1D2E3F4567 /* CameraView.swift in Sources */,
+				8A9B0C1D2E3F4569 /* ResultView.swift in Sources */,
+				8A9B0C1D2E3F4571 /* SettingsView.swift in Sources */,
+				8A9B0C1D2E3F4573 /* GalleryView.swift in Sources */,
+				
+				/* Subscription Views */
+				9A0B1C2D3E4F5678 /* PaywallView.swift in Sources */,
+				9A0B1C2D3E4F5680 /* ManageSubscriptionView.swift in Sources */,
+				9A0B1C2D3E4F5682 /* CreditsShopView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		ABCDEF1234567911 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		ABCDEF1234567912 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		ABCDEF1234567913 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NZBE9W77FA;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PhotoStop/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "PhotoStop uses your camera to capture photos for AI-powered enhancement. Your photos are processed locally and with secure cloud AI services, then immediately deleted from our servers.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "PhotoStop needs permission to save your enhanced photos to your photo library. We only save photos when you explicitly choose to save them.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "PhotoStop can access your photo library to let you select existing photos for enhancement. We only access photos you specifically choose to edit.";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = "";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.servesys.photostop;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		ABCDEF1234567914 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NZBE9W77FA;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PhotoStop/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "PhotoStop uses your camera to capture photos for AI-powered enhancement. Your photos are processed locally and with secure cloud AI services, then immediately deleted from our servers.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "PhotoStop needs permission to save your enhanced photos to your photo library. We only save photos when you explicitly choose to save them.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "PhotoStop can access your photo library to let you select existing photos for enhancement. We only access photos you specifically choose to edit.";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = "";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.servesys.photostop;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		ABCDEF1234567906 /* Build configuration list for PBXNativeTarget "PhotoStop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ABCDEF1234567913 /* Debug */,
+				ABCDEF1234567914 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ABCDEF1234567910 /* Build configuration list for PBXProject "PhotoStop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ABCDEF1234567911 /* Debug */,
+				ABCDEF1234567912 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = ABCDEF1234567909 /* Project object */;
+}
+

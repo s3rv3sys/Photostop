@@ -1,0 +1,178 @@
+{
+  "identifier" : "PhotoStop",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "6736123456",
+      "localizations" : [
+        {
+          "description" : "Add 10 premium AI credits to your account for advanced photo enhancements using our most powerful AI models.",
+          "displayName" : "10 Premium Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.servesys.photostop.credits.premium10",
+      "referenceName" : "10 Premium Credits",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "6736123457",
+      "localizations" : [
+        {
+          "description" : "Add 50 premium AI credits to your account for advanced photo enhancements. Best value for power users!",
+          "displayName" : "50 Premium Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.servesys.photostop.credits.premium50",
+      "referenceName" : "50 Premium Credits",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6736123450",
+    "_developerTeamID" : "NZBE9W77FA",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 748094400.0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21482975",
+      "localizations" : [
+        {
+          "description" : "PhotoStop Pro unlocks unlimited AI photo enhancement with advanced features, priority processing, and high-resolution exports.",
+          "displayName" : "PhotoStop Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "PhotoStop Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9.99",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "6736123451",
+          "introductoryOffer" : {
+            "internalID" : "20593412",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Unlock unlimited AI photo enhancement with 500 budget credits and 300 premium credits per month. Includes priority processing, advanced features, and high-resolution exports.",
+              "displayName" : "PhotoStop Pro",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.servesys.photostop.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "PhotoStop Pro Monthly",
+          "subscriptionGroupID" : "21482975",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+            {
+              "displayPrice" : "39.99",
+              "internalID" : "20593413",
+              "offerID" : "intro-yearly-50off",
+              "paymentMode" : "payUpFront",
+              "referenceName" : "Yearly Intro 50% Off",
+              "subscriptionPeriod" : "P1M"
+            }
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "79.99",
+          "familyShareable" : true,
+          "groupNumber" : 2,
+          "internalID" : "6736123452",
+          "introductoryOffer" : {
+            "internalID" : "20593414",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Get PhotoStop Pro with 20% savings! Includes 500 budget credits and 300 premium credits per month, priority processing, advanced features, and high-resolution exports.",
+              "displayName" : "PhotoStop Pro (Yearly)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.servesys.photostop.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "PhotoStop Pro Yearly",
+          "subscriptionGroupID" : "21482975",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
+
