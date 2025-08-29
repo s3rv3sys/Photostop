@@ -2,464 +2,488 @@
 //  SettingsView.swift
 //  PhotoStop
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import SwiftUI
 
-/// Settings and configuration view
+/// Settings view for app configuration and preferences
 struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
-    @Environment(\.dismiss) private var dismiss
+    @StateObject private var subscriptionViewModel = SubscriptionViewModel()
+    @StateObject private var feedbackService = IQAFeedbackService.shared
+    @StateObject private var uploadQueue = UploadQueue.shared
+    
+    @State private var showPaywall = false
+    @State private var showManageSubscription = false
+    @State private var showCreditsShop = false
     
     var body: some View {
-        NavigationView {
-            List {
-                // API Configuration Section
-                apiConfigurationSection
-                
-                // Usage & Subscription Section
-                usageSection
-                
-                // Preferences Section
-                preferencesSection
-                
-                // Permissions Section
-                permissionsSection
-                
-                // Storage Section
-                storageSection
-                
-                // About Section
-                aboutSection
-            }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $viewModel.showingAPIKeyInput) {
-            APIKeyInputView(viewModel: viewModel)
-        }
-        .sheet(isPresented: $viewModel.showingSubscription) {
-            SubscriptionView()
-        }
-        .sheet(isPresented: $viewModel.showingAbout) {
-            AboutView(viewModel: viewModel)
-        }
-        .alert("Success", isPresented: $viewModel.showingSuccess) {
-            Button("OK") { }
-        } message: {
-            Text(viewModel.successMessage)
-        }
-        .alert("Error", isPresented: $viewModel.showingError) {
-            Button("OK") { }
-        } message: {
-            if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-            }
-        }
-    }
-    
-    // MARK: - API Configuration Section
-    private var apiConfigurationSection: some View {
-        Section("AI Configuration") {
-            HStack {
-                Label("Gemini API Key", systemImage: "key")
-                Spacer()
-                
-                if viewModel.isAPIKeyConfigured {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Configured")
-                        .foregroundColor(.green)
-                        .font(.caption)
-                } else {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .foregroundColor(.red)
-                    Text("Not Set")
-                        .foregroundColor(.red)
-                        .font(.caption)
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                viewModel.showingAPIKeyInput = true
-            }
-            
-            if viewModel.isAPIKeyConfigured {
-                Button("Remove API Key", role: .destructive) {
-                    viewModel.removeAPIKey()
-                }
-            }
-        }
-    }
-    
-    // MARK: - Usage Section
-    private var usageSection: some View {
-        Section("Usage & Subscription") {
-            HStack {
-                Label("Usage This Month", systemImage: "chart.bar")
-                Spacer()
-                Text("\(viewModel.usageCount) / ∞")
-                    .foregroundColor(.secondary)
-            }
-            
-            HStack {
-                Label("Remaining Free Uses", systemImage: "gift")
-                Spacer()
-                Text("\(viewModel.remainingFreeUses)")
-                    .foregroundColor(viewModel.remainingFreeUses > 5 ? .green : .orange)
-            }
-            
-            if !viewModel.isPremiumUser {
-                Button(action: {
-                    viewModel.showingSubscription = true
-                }) {
-                    Label("Upgrade to Premium", systemImage: "crown")
-                        .foregroundColor(.orange)
-                }
-            } else {
+        List {
+            // Account section
+            Section("Account") {
                 HStack {
-                    Label("Premium Active", systemImage: "crown.fill")
-                        .foregroundColor(.orange)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(subscriptionViewModel.currentTier.displayName)
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        if subscriptionViewModel.currentTier == .pro {
+                            Text("Active until \(subscriptionViewModel.subscriptionExpiryDate?.formatted(date: .abbreviated, time: .omitted) ?? "Unknown")")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("Upgrade for unlimited AI enhancements")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
                     Spacer()
-                    Text("Unlimited")
-                        .foregroundColor(.orange)
+                    
+                    if subscriptionViewModel.currentTier == .free {
+                        Button("Go Pro") {
+                            showPaywall = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    } else {
+                        Button("Manage") {
+                            showManageSubscription = true
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                 }
-            }
-        }
-    }
-    
-    // MARK: - Preferences Section
-    private var preferencesSection: some View {
-        Section("Preferences") {
-            Toggle(isOn: $viewModel.autoSaveToPhotos) {
-                Label("Auto-save to Photos", systemImage: "photo.on.rectangle")
-            }
-            .onChange(of: viewModel.autoSaveToPhotos) { _ in
-                // Save preference change
+                .padding(.vertical, 4)
             }
             
-            Toggle(isOn: $viewModel.enableWatermark) {
-                Label("Add Watermark", systemImage: "signature")
-            }
-            .onChange(of: viewModel.enableWatermark) { _ in
-                // Save preference change
-            }
-            
-            Toggle(isOn: $viewModel.enableHapticFeedback) {
-                Label("Haptic Feedback", systemImage: "iphone.radiowaves.left.and.right")
-            }
-            .onChange(of: viewModel.enableHapticFeedback) { _ in
-                // Save preference change
-            }
-            
-            Picker("Image Quality", selection: $viewModel.preferredImageQuality) {
-                ForEach(ImageQuality.allCases, id: \.self) { quality in
-                    Text(quality.displayName).tag(quality)
-                }
-            }
-            .pickerStyle(MenuPickerStyle())
-        }
-    }
-    
-    // MARK: - Permissions Section
-    private var permissionsSection: some View {
-        Section("Permissions") {
-            HStack {
-                Label("Camera", systemImage: "camera")
-                Spacer()
-                Text(viewModel.cameraPermissionStatus)
-                    .foregroundColor(viewModel.cameraPermissionStatus == "Authorized" ? .green : .red)
-                    .font(.caption)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                Task {
-                    await viewModel.requestCameraPermission()
-                }
-            }
-            
-            HStack {
-                Label("Photos", systemImage: "photo.on.rectangle")
-                Spacer()
-                Text(viewModel.photosPermissionStatus)
-                    .foregroundColor(viewModel.photosPermissionStatus.contains("Authorized") ? .green : .red)
-                    .font(.caption)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                Task {
-                    await viewModel.requestPhotosPermission()
-                }
-            }
-        }
-    }
-    
-    // MARK: - Storage Section
-    private var storageSection: some View {
-        Section("Storage") {
-            HStack {
-                Label("Storage Used", systemImage: "internaldrive")
-                Spacer()
-                Text(viewModel.storageUsed)
-                    .foregroundColor(.secondary)
-            }
-            
-            HStack {
-                Label("Edit History", systemImage: "clock.arrow.circlepath")
-                Spacer()
-                Text("\(viewModel.editHistoryCount) items")
-                    .foregroundColor(.secondary)
-            }
-            
-            Button("Clear Edit History", role: .destructive) {
-                Task {
-                    await viewModel.clearEditHistory()
-                }
-            }
-            
-            Button("Cleanup Old Images") {
-                Task {
-                    await viewModel.cleanupOldImages()
-                }
-            }
-        }
-    }
-    
-    // MARK: - About Section
-    private var aboutSection: some View {
-        Section("About") {
-            Button(action: {
-                viewModel.showingAbout = true
-            }) {
-                Label("About PhotoStop", systemImage: "info.circle")
-                    .foregroundColor(.primary)
-            }
-            
-            Button("Privacy Policy") {
-                viewModel.showingPrivacyPolicy = true
-            }
-            
-            Button("Terms of Service") {
-                viewModel.showingTermsOfService = true
-            }
-            
-            HStack {
-                Label("Version", systemImage: "app.badge")
-                Spacer()
-                Text(viewModel.getAppVersion())
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-}
-
-// MARK: - API Key Input View
-struct APIKeyInputView: View {
-    @ObservedObject var viewModel: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Enter your Gemini API key to enable AI image enhancement.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+            // Usage section
+            Section("Usage This Month") {
+                UsageRow(
+                    title: "Budget AI Credits",
+                    used: viewModel.budgetCreditsUsed,
+                    total: viewModel.budgetCreditsLimit,
+                    color: .blue
+                )
                 
-                SecureField("API Key", text: $viewModel.apiKey)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                UsageRow(
+                    title: "Premium AI Credits",
+                    used: viewModel.premiumCreditsUsed,
+                    total: viewModel.premiumCreditsLimit,
+                    color: .purple
+                )
                 
-                Text("You can get your API key from the Google AI Studio. The key is stored securely in your device's keychain.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("API Key")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
+                if viewModel.addonCredits > 0 {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.green)
+                        
+                        Text("Addon Credits")
+                        
+                        Spacer()
+                        
+                        Text("\(viewModel.addonCredits)")
+                            .fontWeight(.medium)
+                            .foregroundColor(.green)
                     }
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        viewModel.saveAPIKey()
+                if subscriptionViewModel.currentTier == .free {
+                    Button("Buy More Credits") {
+                        showCreditsShop = true
                     }
-                    .disabled(viewModel.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .foregroundColor(.blue)
                 }
             }
-        }
-    }
-}
-
-// MARK: - Subscription View
-struct SubscriptionView: View {
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 30) {
-                // Header
-                VStack(spacing: 16) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(.orange)
-                    
-                    Text("PhotoStop Premium")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                    
-                    Text("Unlimited AI enhancements")
-                        .font(.subheadline)
+            
+            // ML Feedback section
+            Section {
+                NavigationLink(destination: IQASettingsView()) {
+                    HStack {
+                        Image(systemName: "brain.head.profile")
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Improve Auto-Selection")
+                                .font(.system(size: 16, weight: .medium))
+                            
+                            if feedbackService.isEnabled {
+                                Text("\(feedbackService.totalRatings) ratings • \(feedbackService.creditsEarned) credits earned")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("Help train better AI models")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        if feedbackService.isEnabled {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                        }
+                    }
+                }
+            } header: {
+                Text("Machine Learning")
+            } footer: {
+                Text("Rate photo selections to help improve PhotoStop's AI. Earn bonus credits for contributing feedback.")
+            }
+            
+            // AI Providers section
+            Section("AI Enhancement") {
+                NavigationLink(destination: AIProvidersView()) {
+                    HStack {
+                        Image(systemName: "cpu")
+                            .foregroundColor(.orange)
+                            .frame(width: 24)
+                        
+                        Text("AI Providers")
+                        
+                        Spacer()
+                        
+                        Text(viewModel.activeProvidersCount)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Toggle("Smart Routing", isOn: $viewModel.smartRoutingEnabled)
+                    .onChange(of: viewModel.smartRoutingEnabled) { _, newValue in
+                        viewModel.updateSmartRouting(newValue)
+                    }
+                
+                Toggle("Cost Optimization", isOn: $viewModel.costOptimizationEnabled)
+                    .onChange(of: viewModel.costOptimizationEnabled) { _, newValue in
+                        viewModel.updateCostOptimization(newValue)
+                    }
+            }
+            
+            // Camera section
+            Section("Camera") {
+                Toggle("Burst Mode", isOn: $viewModel.burstModeEnabled)
+                    .onChange(of: viewModel.burstModeEnabled) { _, newValue in
+                        viewModel.updateBurstMode(newValue)
+                    }
+                
+                Toggle("Auto Flash", isOn: $viewModel.autoFlashEnabled)
+                    .onChange(of: viewModel.autoFlashEnabled) { _, newValue in
+                        viewModel.updateAutoFlash(newValue)
+                    }
+                
+                Picker("Photo Quality", selection: $viewModel.photoQuality) {
+                    ForEach(PhotoQuality.allCases, id: \.self) { quality in
+                        Text(quality.displayName).tag(quality)
+                    }
+                }
+                .onChange(of: viewModel.photoQuality) { _, newValue in
+                    viewModel.updatePhotoQuality(newValue)
+                }
+            }
+            
+            // Privacy section
+            Section("Privacy") {
+                NavigationLink(destination: PrivacySettingsView()) {
+                    HStack {
+                        Image(systemName: "hand.raised.fill")
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
+                        
+                        Text("Privacy Settings")
+                    }
+                }
+                
+                NavigationLink(destination: DataManagementView()) {
+                    HStack {
+                        Image(systemName: "externaldrive.fill")
+                            .foregroundColor(.gray)
+                            .frame(width: 24)
+                        
+                        Text("Data Management")
+                    }
+                }
+            }
+            
+            // Support section
+            Section("Support") {
+                Link(destination: URL(string: "https://servesys.com/photostop/help")!) {
+                    HStack {
+                        Image(systemName: "questionmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
+                        
+                        Text("Help & FAQ")
+                        
+                        Spacer()
+                        
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Link(destination: URL(string: "mailto:support@servesys.com?subject=PhotoStop%20Support")!) {
+                    HStack {
+                        Image(systemName: "envelope.fill")
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
+                        
+                        Text("Contact Support")
+                        
+                        Spacer()
+                        
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                NavigationLink(destination: AboutView()) {
+                    HStack {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.gray)
+                            .frame(width: 24)
+                        
+                        Text("About PhotoStop")
+                    }
+                }
+            }
+            
+            // App info section
+            Section {
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text(viewModel.appVersion)
                         .foregroundColor(.secondary)
                 }
                 
-                // Features
-                VStack(alignment: .leading, spacing: 16) {
-                    FeatureRow(icon: "infinity", title: "Unlimited AI Enhancements", description: "No monthly limits")
-                    FeatureRow(icon: "wand.and.stars", title: "Advanced AI Models", description: "Access to latest AI technology")
-                    FeatureRow(icon: "icloud.and.arrow.up", title: "Cloud Sync", description: "Sync your edits across devices")
-                    FeatureRow(icon: "person.2", title: "Priority Support", description: "Get help when you need it")
-                }
-                .padding()
-                .background(Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                
-                // Pricing
-                VStack(spacing: 12) {
-                    Text("$4.99/month")
-                        .font(.title)
-                        .fontWeight(.bold)
-                    
-                    Text("Cancel anytime")
-                        .font(.caption)
+                HStack {
+                    Text("Build")
+                    Spacer()
+                    Text(viewModel.buildNumber)
                         .foregroundColor(.secondary)
                 }
                 
-                // Subscribe button
-                Button(action: {
-                    // Handle subscription
-                }) {
-                    Text("Start Free Trial")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.orange)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Premium")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        dismiss()
+                if feedbackService.contributionEnabled && uploadQueue.pendingUploads > 0 {
+                    HStack {
+                        Text("Pending Uploads")
+                        Spacer()
+                        Text("\(uploadQueue.pendingUploads)")
+                            .foregroundColor(.orange)
                     }
                 }
             }
         }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showPaywall) {
+            PaywallView(context: .generalUpgrade)
+        }
+        .sheet(isPresented: $showManageSubscription) {
+            ManageSubscriptionView()
+        }
+        .sheet(isPresented: $showCreditsShop) {
+            CreditsShopView()
+        }
+        .onAppear {
+            viewModel.loadSettings()
+        }
     }
 }
 
-// MARK: - Feature Row
-struct FeatureRow: View {
-    let icon: String
+/// Usage row component
+struct UsageRow: View {
     let title: String
-    let description: String
+    let used: Int
+    let total: Int
+    let color: Color
+    
+    private var progress: Double {
+        guard total > 0 else { return 0 }
+        return Double(used) / Double(total)
+    }
     
     var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(.orange)
-                .frame(width: 30)
-            
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
                 Text(title)
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .medium))
                 
-                Text(description)
-                    .font(.subheadline)
+                Spacer()
+                
+                Text("\(used)/\(total)")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(progress > 0.8 ? .red : .secondary)
+            }
+            
+            ProgressView(value: progress)
+                .tint(progress > 0.8 ? .red : color)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// AI Providers configuration view
+struct AIProvidersView: View {
+    @StateObject private var viewModel = SettingsViewModel()
+    
+    var body: some View {
+        List {
+            Section {
+                Text("Configure which AI providers are available for photo enhancement. PhotoStop automatically chooses the best provider based on your preferences and credit availability.")
+                    .font(.caption)
                     .foregroundColor(.secondary)
+            }
+            
+            Section("Available Providers") {
+                ForEach(viewModel.aiProviders, id: \.name) { provider in
+                    ProviderRow(provider: provider) { enabled in
+                        viewModel.updateProvider(provider.name, enabled: enabled)
+                    }
+                }
+            }
+        }
+        .navigationTitle("AI Providers")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            viewModel.loadProviders()
+        }
+    }
+}
+
+/// Provider configuration row
+struct ProviderRow: View {
+    let provider: AIProviderInfo
+    let onToggle: (Bool) -> Void
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(provider.name)
+                    .font(.system(size: 16, weight: .medium))
+                
+                Text(provider.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                HStack {
+                    Text(provider.costTier.displayName)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(provider.costTier.color.opacity(0.2))
+                        .foregroundColor(provider.costTier.color)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    
+                    if provider.isRecommended {
+                        Text("Recommended")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.2))
+                            .foregroundColor(.green)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
             }
             
             Spacer()
+            
+            Toggle("", isOn: .constant(provider.isEnabled))
+                .onChange(of: provider.isEnabled) { _, newValue in
+                    onToggle(newValue)
+                }
         }
+        .padding(.vertical, 4)
     }
 }
 
-// MARK: - About View
-struct AboutView: View {
-    @ObservedObject var viewModel: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
-    
+// MARK: - Supporting Views
+
+struct PrivacySettingsView: View {
     var body: some View {
-        NavigationView {
-            VStack(spacing: 30) {
-                // App icon and info
-                VStack(spacing: 16) {
-                    Image(systemName: "camera.aperture")
-                        .font(.system(size: 80))
-                        .foregroundColor(.blue)
+        List {
+            Section {
+                Text("PhotoStop is designed with privacy in mind. Your photos are processed securely and we never store your images without permission.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Privacy settings would go here
+            Text("Privacy settings coming soon...")
+                .foregroundColor(.secondary)
+        }
+        .navigationTitle("Privacy")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct DataManagementView: View {
+    var body: some View {
+        List {
+            Section {
+                Text("Manage your local data and cloud sync preferences.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Data management options would go here
+            Text("Data management coming soon...")
+                .foregroundColor(.secondary)
+        }
+        .navigationTitle("Data Management")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct AboutView: View {
+    var body: some View {
+        List {
+            Section {
+                VStack(alignment: .center, spacing: 16) {
+                    Image("AppIcon")
+                        .resizable()
+                        .frame(width: 80, height: 80)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                     
                     Text("PhotoStop")
-                        .font(.largeTitle)
+                        .font(.title2)
                         .fontWeight(.bold)
                     
                     Text("AI-Powered Photo Enhancement")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
-                
-                // App info
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(Array(viewModel.getAppInfo().keys.sorted()), id: \.self) { key in
-                        HStack {
-                            Text(key)
-                                .fontWeight(.medium)
-                            Spacer()
-                            Text(viewModel.getAppInfo()[key] ?? "")
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .padding()
-                .background(Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                
-                Spacer()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical)
             }
-            .padding()
-            .navigationTitle("About")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
+            
+            Section("About") {
+                Text("PhotoStop uses advanced AI to automatically enhance your photos with professional-quality results. Our smart routing system ensures you get the best enhancement while optimizing costs.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Section("Developer") {
+                Text("Developed by Servesys Corporation")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
+        .navigationTitle("About")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
+
 #Preview {
-    SettingsView()
+    NavigationView {
+        SettingsView()
+    }
 }
 
