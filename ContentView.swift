@@ -7,48 +7,123 @@
 
 import SwiftUI
 
-/// Main app content view with tab navigation
+/// Main content view with tab navigation and onboarding integration
 struct ContentView: View {
-    @State private var selectedTab = 0
+    @StateObject private var authViewModel = AuthViewModel()
+    @State private var selectedTab: Int = 0
+    @State private var showingOnboarding = false
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // Camera tab
-            CameraView()
-                .tabItem {
-                    Image(systemName: "camera.fill")
-                    Text("Camera")
+        ZStack {
+            if showingOnboarding {
+                // Show onboarding flow
+                OnboardingFlowView()
+                    .transition(.opacity)
+            } else {
+                // Main app interface
+                TabView(selection: $selectedTab) {
+                    // Camera tab
+                    NavigationView {
+                        CameraView()
+                    }
+                    .tabItem {
+                        Image(systemName: "camera.fill")
+                        Text("Camera")
+                    }
+                    .tag(0)
+                    
+                    // Gallery tab
+                    NavigationView {
+                        GalleryView()
+                    }
+                    .tabItem {
+                        Image(systemName: "photo.on.rectangle.angled")
+                        Text("Gallery")
+                    }
+                    .tag(1)
+                    
+                    // Profile tab
+                    NavigationView {
+                        ProfileView()
+                    }
+                    .tabItem {
+                        Image(systemName: authViewModel.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")
+                        Text("Profile")
+                    }
+                    .tag(2)
+                    
+                    // Settings tab
+                    NavigationView {
+                        SettingsView()
+                    }
+                    .tabItem {
+                        Image(systemName: "gearshape.fill")
+                        Text("Settings")
+                    }
+                    .tag(3)
                 }
-                .tag(0)
-            
-            // Gallery tab
-            GalleryView()
-                .tabItem {
-                    Image(systemName: "photo.on.rectangle.angled")
-                    Text("Gallery")
+                .accentColor(.blue)
+                .onAppear {
+                    // Customize tab bar appearance
+                    let appearance = UITabBarAppearance()
+                    appearance.configureWithOpaqueBackground()
+                    appearance.backgroundColor = UIColor.systemBackground
+                    
+                    UITabBar.appearance().standardAppearance = appearance
+                    UITabBar.appearance().scrollEdgeAppearance = appearance
                 }
-                .tag(1)
-            
-            // Settings tab
-            SettingsView()
-                .tabItem {
-                    Image(systemName: "gearshape.fill")
-                    Text("Settings")
-                }
-                .tag(2)
+            }
         }
-        .accentColor(.blue)
+        .animation(.easeInOut(duration: 0.3), value: showingOnboarding)
         .onAppear {
-            // Customize tab bar appearance
-            let appearance = UITabBarAppearance()
-            appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = UIColor.systemBackground
-            
-            UITabBar.appearance().standardAppearance = appearance
-            UITabBar.appearance().scrollEdgeAppearance = appearance
+            checkOnboardingStatus()
+        }
+        .sheet(isPresented: $authViewModel.showingSignIn) {
+            SignInView(onComplete: authViewModel.handleSignInComplete)
+        }
+        .alert("Authentication Error", isPresented: $authViewModel.showingError) {
+            Button("OK") {
+                authViewModel.clearError()
+            }
+        } message: {
+            if let error = authViewModel.lastError {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(error.userFriendlyMessage)
+                    Text(error.recoverySuggestion)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Private Methods
+    
+    /// Check if onboarding should be shown
+    private func checkOnboardingStatus() {
+        let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "OnboardingCompleted")
+        showingOnboarding = !hasCompletedOnboarding
+        
+        // Listen for onboarding completion
+        NotificationCenter.default.addObserver(
+            forName: .onboardingCompleted,
+            object: nil,
+            queue: .main
+        ) { _ in
+            withAnimation(.easeInOut(duration: 0.5)) {
+                showingOnboarding = false
+            }
         }
     }
 }
+
+// MARK: - Notification Extensions
+
+extension Notification.Name {
+    static let onboardingCompleted = Notification.Name("OnboardingCompleted")
+}
+
+// MARK: - Preview
 
 #Preview {
     ContentView()

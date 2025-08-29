@@ -2,31 +2,208 @@
 //  AppDelegate.swift
 //  PhotoStop
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import UIKit
+import os.log
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
-
+    
+    private let logger = Logger(subsystem: "com.servesys.photostop", category: "AppDelegate")
+    
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        logger.info("PhotoStop launching...")
+        
+        // Configure app appearance
+        configureAppearance()
+        
+        // Initialize core services
+        initializeCoreServices()
+        
+        // Check if this is first launch
+        checkFirstLaunch()
+        
+        logger.info("PhotoStop launch completed")
         return true
     }
-
+    
     // MARK: UISceneSession Lifecycle
-
+    
     func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-        // Called when a new scene session is being created.
-        // Use this method to select a configuration to create the new scene with.
         return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
     }
-
+    
     func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
-        // Called when the user discards a scene session.
-        // If any sessions were discarded while the application was not running, this will be called shortly after application:didFinishLaunchingWithOptions.
-        // Use this method to release any resources that were specific to the discarded scenes, as they will not return.
+        // Called when the user discards a scene session
     }
+    
+    // MARK: - Private Methods
+    
+    /// Configure global app appearance
+    private func configureAppearance() {
+        // Configure navigation bar appearance
+        let navBarAppearance = UINavigationBarAppearance()
+        navBarAppearance.configureWithOpaqueBackground()
+        navBarAppearance.backgroundColor = UIColor.systemBackground
+        navBarAppearance.titleTextAttributes = [
+            .foregroundColor: UIColor.label,
+            .font: UIFont.systemFont(ofSize: 18, weight: .semibold)
+        ]
+        navBarAppearance.largeTitleTextAttributes = [
+            .foregroundColor: UIColor.label,
+            .font: UIFont.systemFont(ofSize: 34, weight: .bold)
+        ]
+        
+        UINavigationBar.appearance().standardAppearance = navBarAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navBarAppearance
+        UINavigationBar.appearance().compactAppearance = navBarAppearance
+        
+        // Configure tab bar appearance
+        let tabBarAppearance = UITabBarAppearance()
+        tabBarAppearance.configureWithOpaqueBackground()
+        tabBarAppearance.backgroundColor = UIColor.systemBackground
+        
+        UITabBar.appearance().standardAppearance = tabBarAppearance
+        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+        
+        // Set app tint color
+        if let window = UIApplication.shared.windows.first {
+            window.tintColor = UIColor.systemBlue
+        }
+        
+        logger.info("App appearance configured")
+    }
+    
+    /// Initialize core services
+    private func initializeCoreServices() {
+        // Initialize AuthService (this will set up anonymous user if needed)
+        _ = AuthService.shared
+        
+        // Initialize PreferencesStore
+        _ = PreferencesStore.shared
+        
+        // Initialize UsageTracker
+        _ = UsageTracker.shared
+        
+        // Initialize other core services
+        _ = KeychainService.shared
+        
+        logger.info("Core services initialized")
+    }
+    
+    /// Check if this is the first app launch
+    private func checkFirstLaunch() {
+        let hasLaunchedBefore = UserDefaults.standard.bool(forKey: "HasLaunchedBefore")
+        let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "OnboardingCompleted")
+        
+        if !hasLaunchedBefore {
+            logger.info("First app launch detected")
+            
+            // Mark as launched
+            UserDefaults.standard.set(true, forKey: "HasLaunchedBefore")
+            UserDefaults.standard.set(false, forKey: "OnboardingCompleted")
+            
+            // Set up default preferences for new user
+            setupDefaultPreferences()
+            
+        } else if !hasCompletedOnboarding {
+            logger.info("App previously launched but onboarding not completed")
+        } else {
+            logger.info("Returning user launch")
+        }
+    }
+    
+    /// Set up default preferences for new users
+    private func setupDefaultPreferences() {
+        let authService = AuthService.shared
+        let preferencesStore = PreferencesStore.shared
+        
+        // Load preferences for current user (anonymous)
+        preferencesStore.load(for: authService.currentProfile().userId)
+        
+        // Apply default preferences
+        let defaultPrefs = UserPreferences.defaultPreferences()
+        preferencesStore.prefs = defaultPrefs
+        preferencesStore.save()
+        
+        logger.info("Default preferences set up for new user")
+    }
+}
+
+// MARK: - App State Management
+
+extension AppDelegate {
+    
+    /// Handle app becoming active
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        logger.info("App became active")
+        
+        // Update last seen timestamp
+        let authService = AuthService.shared
+        Task {
+            await authService.updateProfile(
+                displayName: authService.currentProfile().displayName,
+                email: authService.currentProfile().email
+            )
+        }
+        
+        // Refresh usage tracking
+        UsageTracker.shared.ensureMonthBoundary()
+    }
+    
+    /// Handle app entering background
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        logger.info("App entered background")
+        
+        // Save current preferences
+        PreferencesStore.shared.save()
+        
+        // Save usage tracking data
+        UsageTracker.shared.save()
+    }
+    
+    /// Handle app termination
+    func applicationWillTerminate(_ application: UIApplication) {
+        logger.info("App will terminate")
+        
+        // Final save of all data
+        PreferencesStore.shared.save()
+        UsageTracker.shared.save()
+    }
+}
+
+// MARK: - URL Handling
+
+extension AppDelegate {
+    
+    /// Handle URL schemes (for social sharing callbacks)
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+        logger.info("Handling URL: \(url.absoluteString)")
+        
+        // Handle Instagram callback
+        if url.scheme == "photostop" && url.host == "instagram" {
+            logger.info("Instagram callback received")
+            NotificationCenter.default.post(name: .instagramShareCompleted, object: url)
+            return true
+        }
+        
+        // Handle TikTok callback
+        if url.scheme == "photostop" && url.host == "tiktok" {
+            logger.info("TikTok callback received")
+            NotificationCenter.default.post(name: .tiktokShareCompleted, object: url)
+            return true
+        }
+        
+        return false
+    }
+}
+
+// MARK: - Notifications
+
+extension Notification.Name {
+    static let instagramShareCompleted = Notification.Name("InstagramShareCompleted")
+    static let tiktokShareCompleted = Notification.Name("TikTokShareCompleted")
 }
 
