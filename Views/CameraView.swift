@@ -8,266 +8,226 @@
 import SwiftUI
 import AVFoundation
 
-/// Main camera view with live preview and capture functionality
+/// Main camera view with live preview and capture controls
 struct CameraView: View {
     @StateObject private var viewModel = CameraViewModel()
-    @StateObject private var feedbackService = IQAFeedbackService.shared
-    
-    @State private var showRatingView = false
-    @State private var capturedImage: UIImage?
-    @State private var frameScore: FrameScore?
+    @State private var showingSettings = false
     
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Camera preview
-                CameraPreviewView(session: viewModel.captureSession)
+        ZStack {
+            // Camera preview
+            CameraPreviewView(session: viewModel.captureSession)
+                .ignoresSafeArea()
+            
+            // Processing overlay
+            if viewModel.isProcessing {
+                Color.black.opacity(0.3)
                     .ignoresSafeArea()
-                    .onAppear {
-                        viewModel.startSession()
-                    }
-                    .onDisappear {
-                        viewModel.stopSession()
-                    }
                 
-                // Overlay UI
-                VStack {
-                    // Top controls
-                    HStack {
-                        // Flash toggle
-                        Button {
-                            viewModel.toggleFlash()
-                        } label: {
-                            Image(systemName: viewModel.isFlashOn ? "bolt.fill" : "bolt.slash.fill")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .padding(12)
-                                .background(.black.opacity(0.3), in: Circle())
+                ProcessingOverlay(
+                    status: viewModel.processingStatus,
+                    progress: viewModel.processingProgress
+                )
+            }
+            
+            // Camera controls
+            VStack {
+                // Top controls
+                HStack {
+                    Button(action: { showingSettings = true }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Circle().fill(.black.opacity(0.3)))
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: viewModel.toggleFlash) {
+                        Image(systemName: viewModel.isFlashOn ? "bolt.fill" : "bolt.slash.fill")
+                            .font(.title2)
+                            .foregroundColor(viewModel.isFlashOn ? .yellow : .white)
+                            .padding(12)
+                            .background(Circle().fill(.black.opacity(0.3)))
+                    }
+                    
+                    Button(action: viewModel.switchCamera) {
+                        Image(systemName: "camera.rotate.fill")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Circle().fill(.black.opacity(0.3)))
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+                
+                Spacer()
+                
+                // Bottom controls
+                VStack(spacing: 20) {
+                    // Enhancement options (if not processing)
+                    if !viewModel.isProcessing {
+                        EnhancementOptionsView(
+                            selectedTask: $viewModel.selectedTask,
+                            customPrompt: $viewModel.customPrompt,
+                            useHighQuality: $viewModel.useHighQuality
+                        )
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    // Capture button
+                    CaptureButton(
+                        isProcessing: viewModel.isProcessing,
+                        onCapture: viewModel.captureAndEnhance
+                    )
+                    .padding(.bottom, 40)
+                }
+            }
+        }
+        .onAppear {
+            viewModel.startSession()
+        }
+        .onDisappear {
+            viewModel.stopSession()
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+        }
+        .sheet(isPresented: $viewModel.showingResult) {
+            if let originalImage = viewModel.originalImage,
+               let enhancedImage = viewModel.enhancedImage {
+                ResultView(
+                    originalImage: originalImage,
+                    enhancedImage: enhancedImage
+                )
+            }
+        }
+        .sheet(isPresented: $viewModel.showingPaywall) {
+            PaywallView(context: .insufficientCredits)
+                .onDisappear {
+                    // Handle purchase success if needed
+                    if !viewModel.showingPaywall {
+                        viewModel.handlePurchaseSuccess()
+                    }
+                }
+        }
+        .errorOverlay(error: $viewModel.currentError) {
+            viewModel.retryEnhancement()
+        }
+    }
+}
+
+/// Enhancement options panel
+struct EnhancementOptionsView: View {
+    @Binding var selectedTask: EditTask
+    @Binding var customPrompt: String
+    @Binding var useHighQuality: Bool
+    
+    @State private var isExpanded = false
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // Toggle button
+            Button(action: { isExpanded.toggle() }) {
+                HStack {
+                    Image(systemName: "slider.horizontal.3")
+                    Text("Enhancement Options")
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                }
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(.black.opacity(0.5))
+                )
+            }
+            
+            // Options panel
+            if isExpanded {
+                VStack(spacing: 16) {
+                    // Task selection
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Enhancement Type")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(EditTask.allCases, id: \.self) { task in
+                                    TaskButton(
+                                        task: task,
+                                        isSelected: selectedTask == task,
+                                        onTap: { selectedTask = task }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 4)
                         }
-                        .accessibilityLabel(viewModel.isFlashOn ? "Turn off flash" : "Turn on flash")
+                    }
+                    
+                    // Custom prompt
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Custom Prompt (Optional)")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        TextField("Describe your enhancement...", text: $customPrompt)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+                    
+                    // Quality toggle
+                    HStack {
+                        Text("High Quality")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
                         
                         Spacer()
                         
-                        // Settings button
-                        NavigationLink(destination: SettingsView()) {
-                            Image(systemName: "gearshape.fill")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .padding(12)
-                                .background(.black.opacity(0.3), in: Circle())
-                        }
-                        .accessibilityLabel("Settings")
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
-                    
-                    Spacer()
-                    
-                    // Processing overlay
-                    if viewModel.isProcessing {
-                        ProcessingOverlay(
-                            status: viewModel.processingStatus,
-                            progress: viewModel.processingProgress
-                        )
-                        .transition(.opacity)
-                    }
-                    
-                    Spacer()
-                    
-                    // Bottom controls
-                    VStack(spacing: 20) {
-                        // Rating view (if enabled and image captured)
-                        if feedbackService.isEnabled && showRatingView && capturedImage != nil {
-                            RatePickView(
-                                onRate: { rating, reason in
-                                    handleRating(rating: rating, reason: reason)
-                                },
-                                onDismiss: {
-                                    showRatingView = false
-                                }
-                            )
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                        
-                        // Capture button
-                        CaptureButton(
-                            isProcessing: viewModel.isProcessing,
-                            onCapture: {
-                                Task {
-                                    await capturePhoto()
-                                }
-                            }
-                        )
-                        .disabled(viewModel.isProcessing)
-                        
-                        // Gallery button
-                        NavigationLink(destination: GalleryView()) {
-                            Text("Gallery")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 10)
-                                .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 20))
-                        }
-                        .accessibilityLabel("View gallery")
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 30)
-                }
-            }
-        }
-        .navigationBarHidden(true)
-        .alert("Camera Error", isPresented: .constant(viewModel.error != nil)) {
-            Button("OK") {
-                viewModel.clearError()
-            }
-        } message: {
-            if let error = viewModel.error {
-                Text(error.localizedDescription)
-            }
-        }
-    }
-    
-    private func capturePhoto() async {
-        let result = await viewModel.capturePhoto()
-        
-        switch result {
-        case .success(let enhancedImage):
-            // Store for potential rating
-            capturedImage = enhancedImage.image
-            frameScore = enhancedImage.frameScore
-            
-            // Show rating UI if feedback is enabled
-            if feedbackService.isEnabled {
-                withAnimation(.spring()) {
-                    showRatingView = true
-                }
-                
-                // Auto-hide after 10 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-                    if showRatingView {
-                        withAnimation(.spring()) {
-                            showRatingView = false
-                        }
+                        Toggle("", isOn: $useHighQuality)
+                            .toggleStyle(SwitchToggleStyle(tint: .blue))
                     }
                 }
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(.black.opacity(0.7))
+                )
+                .transition(.opacity.combined(with: .scale))
             }
-            
-        case .failure(let error):
-            print("Capture failed: \(error)")
         }
-    }
-    
-    private func handleRating(rating: Bool, reason: RatingReason?) {
-        guard let image = capturedImage,
-              let score = frameScore else {
-            return
-        }
-        
-        // Process feedback through FrameScoringService
-        FrameScoringService.shared.processFeedback(
-            selectedImage: image,
-            userRating: rating,
-            reason: reason,
-            feedback: nil,
-            modelScore: score.score
-        )
-        
-        withAnimation(.spring()) {
-            showRatingView = false
-        }
-        
-        // Clear stored data
-        capturedImage = nil
-        frameScore = nil
+        .animation(.easeInOut(duration: 0.3), value: isExpanded)
     }
 }
 
-/// Camera preview using AVFoundation
-struct CameraPreviewView: UIViewRepresentable {
-    let session: AVCaptureSession
-    
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: UIScreen.main.bounds)
-        
-        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.frame = view.frame
-        previewLayer.videoGravity = .resizeAspectFill
-        
-        view.layer.addSublayer(previewLayer)
-        
-        return view
-    }
-    
-    func updateUIView(_ uiView: UIView, context: Context) {
-        if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
-            previewLayer.frame = uiView.frame
-        }
-    }
-}
-
-/// Processing status overlay
-struct ProcessingOverlay: View {
-    let status: String
-    let progress: Double
+/// Task selection button
+struct TaskButton: View {
+    let task: EditTask
+    let isSelected: Bool
+    let onTap: () -> Void
     
     var body: some View {
-        VStack(spacing: 16) {
-            ProgressView(value: progress)
-                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                .scaleEffect(1.5)
-            
-            Text(status)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
+        Button(action: onTap) {
+            Text(task.displayName)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(isSelected ? .black : .white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(isSelected ? .white : .white.opacity(0.2))
+                )
         }
-        .padding(24)
-        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
     }
 }
-
-/// Capture button with processing state
-struct CaptureButton: View {
-    let isProcessing: Bool
-    let onCapture: () -> Void
-    
-    var body: some View {
-        Button(action: onCapture) {
-            ZStack {
-                Circle()
-                    .fill(.white)
-                    .frame(width: 80, height: 80)
-                
-                Circle()
-                    .stroke(.black.opacity(0.2), lineWidth: 4)
-                    .frame(width: 80, height: 80)
-                
-                if isProcessing {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                        .scaleEffect(1.2)
-                } else {
-                    Circle()
-                        .fill(.black)
-                        .frame(width: 60, height: 60)
-                }
-            }
-        }
-        .disabled(isProcessing)
-        .scaleEffect(isProcessing ? 0.9 : 1.0)
-        .animation(.easeInOut(duration: 0.1), value: isProcessing)
-        .accessibilityLabel("Capture photo")
-        .accessibilityAddTraits(isProcessing ? [.notEnabled] : [])
-    }
-}
-
-// MARK: - Previews
 
 #Preview {
-    NavigationView {
-        CameraView()
-    }
+    CameraView()
 }
 

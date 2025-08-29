@@ -2,211 +2,272 @@
 //  CameraView.swift
 //  PhotoStop
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import SwiftUI
 import AVFoundation
 
-/// Main camera view with live preview and one-tap capture
+/// Main camera view with live preview and capture functionality
 struct CameraView: View {
-    @ObservedObject var viewModel: CameraViewModel
-    @State private var showingPermissionAlert = false
+    @StateObject private var viewModel = CameraViewModel()
+    @StateObject private var feedbackService = IQAFeedbackService.shared
+    
+    @State private var showRatingView = false
+    @State private var capturedImage: UIImage?
+    @State private var frameScore: FrameScore?
     
     var body: some View {
-        ZStack {
-            // Camera preview
-            CameraPreviewView(viewModel: viewModel)
-                .ignoresSafeArea()
-            
-            // Overlay UI
-            VStack {
-                // Top status bar
-                topStatusBar
+        GeometryReader { geometry in
+            ZStack {
+                // Camera preview
+                CameraPreviewView(session: viewModel.captureSession)
+                    .ignoresSafeArea()
+                    .onAppear {
+                        viewModel.startSession()
+                    }
+                    .onDisappear {
+                        viewModel.stopSession()
+                    }
                 
-                Spacer()
-                
-                // Bottom controls
-                bottomControls
-            }
-            .padding()
-            
-            // Processing overlay
-            if viewModel.isCapturing || viewModel.isProcessing {
-                processingOverlay
-            }
-        }
-        .alert("Camera Permission Required", isPresented: $showingPermissionAlert) {
-            Button("Settings") {
-                openAppSettings()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("PhotoStop needs camera access to capture and enhance your photos. Please enable camera permission in Settings.")
-        }
-        .alert("Error", isPresented: $viewModel.showingError) {
-            Button("OK") { }
-        } message: {
-            if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-            }
-        }
-        .onAppear {
-            Task {
-                await viewModel.startCamera()
-                if !viewModel.cameraPermissionGranted {
-                    showingPermissionAlert = true
+                // Overlay UI
+                VStack {
+                    // Top controls
+                    HStack {
+                        // Flash toggle
+                        Button {
+                            viewModel.toggleFlash()
+                        } label: {
+                            Image(systemName: viewModel.isFlashOn ? "bolt.fill" : "bolt.slash.fill")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .padding(12)
+                                .background(.black.opacity(0.3), in: Circle())
+                        }
+                        .accessibilityLabel(viewModel.isFlashOn ? "Turn off flash" : "Turn on flash")
+                        
+                        Spacer()
+                        
+                        // Settings button
+                        NavigationLink(destination: SettingsView()) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .padding(12)
+                                .background(.black.opacity(0.3), in: Circle())
+                        }
+                        .accessibilityLabel("Settings")
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    
+                    Spacer()
+                    
+                    // Processing overlay
+                    if viewModel.isProcessing {
+                        ProcessingOverlay(
+                            status: viewModel.processingStatus,
+                            progress: viewModel.processingProgress
+                        )
+                        .transition(.opacity)
+                    }
+                    
+                    Spacer()
+                    
+                    // Bottom controls
+                    VStack(spacing: 20) {
+                        // Rating view (if enabled and image captured)
+                        if feedbackService.isEnabled && showRatingView && capturedImage != nil {
+                            RatePickView(
+                                onRate: { rating, reason in
+                                    handleRating(rating: rating, reason: reason)
+                                },
+                                onDismiss: {
+                                    showRatingView = false
+                                }
+                            )
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        
+                        // Capture button
+                        CaptureButton(
+                            isProcessing: viewModel.isProcessing,
+                            onCapture: {
+                                Task {
+                                    await capturePhoto()
+                                }
+                            }
+                        )
+                        .disabled(viewModel.isProcessing)
+                        
+                        // Gallery button
+                        NavigationLink(destination: GalleryView()) {
+                            Text("Gallery")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 20))
+                        }
+                        .accessibilityLabel("View gallery")
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 30)
                 }
             }
         }
-        .onDisappear {
-            viewModel.stopCamera()
-        }
-    }
-    
-    // MARK: - Top Status Bar
-    private var topStatusBar: some View {
-        HStack {
-            // AI Service Status
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(viewModel.isAIServiceReady() ? Color.green : Color.red)
-                    .frame(width: 8, height: 8)
-                
-                Text(viewModel.isAIServiceReady() ? "AI Ready" : "AI Unavailable")
-                    .font(.caption)
-                    .foregroundColor(.white)
+        .navigationBarHidden(true)
+        .alert("Camera Error", isPresented: .constant(viewModel.error != nil)) {
+            Button("OK") {
+                viewModel.clearError()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.black.opacity(0.6))
-            .clipShape(Capsule())
-            
-            Spacer()
-            
-            // Remaining uses
-            if viewModel.isAIServiceReady() {
-                Text("\(viewModel.getRemainingUses()) uses left")
-                    .font(.caption)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.6))
-                    .clipShape(Capsule())
+        } message: {
+            if let error = viewModel.error {
+                Text(error.localizedDescription)
             }
         }
     }
     
-    // MARK: - Bottom Controls
-    private var bottomControls: some View {
-        VStack(spacing: 20) {
-            // Status message
-            Text(viewModel.statusMessage)
-                .font(.subheadline)
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.6))
-                .clipShape(Capsule())
+    private func capturePhoto() async {
+        let result = await viewModel.capturePhoto()
+        
+        switch result {
+        case .success(let enhancedImage):
+            // Store for potential rating
+            capturedImage = enhancedImage.image
+            frameScore = enhancedImage.frameScore
             
-            // Progress bar (when processing)
-            if viewModel.isCapturing || viewModel.isProcessing {
-                ProgressView(value: viewModel.captureProgress)
-                    .progressViewStyle(LinearProgressViewStyle(tint: .white))
-                    .frame(maxWidth: 200)
-            }
-            
-            // Main capture button
-            Button(action: {
-                Task {
-                    await viewModel.captureAndEnhance()
+            // Show rating UI if feedback is enabled
+            if feedbackService.isEnabled {
+                withAnimation(.spring()) {
+                    showRatingView = true
                 }
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 80, height: 80)
-                    
-                    Circle()
-                        .stroke(Color.white, lineWidth: 4)
-                        .frame(width: 90, height: 90)
-                    
-                    if viewModel.isCapturing || viewModel.isProcessing {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                    } else {
-                        Image(systemName: "camera.fill")
-                            .font(.title)
-                            .foregroundColor(.black)
+                
+                // Auto-hide after 10 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                    if showRatingView {
+                        withAnimation(.spring()) {
+                            showRatingView = false
+                        }
                     }
                 }
             }
-            .disabled(viewModel.isCapturing || viewModel.isProcessing || !viewModel.isAIServiceReady())
-            .scaleEffect(viewModel.isCapturing || viewModel.isProcessing ? 0.9 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: viewModel.isCapturing || viewModel.isProcessing)
+            
+        case .failure(let error):
+            print("Capture failed: \(error)")
         }
     }
     
-    // MARK: - Processing Overlay
-    private var processingOverlay: some View {
-        Color.black.opacity(0.3)
-            .ignoresSafeArea()
-            .overlay(
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(1.5)
-                    
-                    Text(viewModel.statusMessage)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    
-                    if viewModel.captureProgress > 0 {
-                        ProgressView(value: viewModel.captureProgress)
-                            .progressViewStyle(LinearProgressViewStyle(tint: .white))
-                            .frame(maxWidth: 200)
-                    }
-                }
-                .padding(32)
-                .background(Color.black.opacity(0.7))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-            )
-    }
-    
-    // MARK: - Helper Methods
-    private func openAppSettings() {
-        if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(settingsUrl)
+    private func handleRating(rating: Bool, reason: RatingReason?) {
+        guard let image = capturedImage,
+              let score = frameScore else {
+            return
         }
+        
+        // Process feedback through FrameScoringService
+        FrameScoringService.shared.processFeedback(
+            selectedImage: image,
+            userRating: rating,
+            reason: reason,
+            feedback: nil,
+            modelScore: score.score
+        )
+        
+        withAnimation(.spring()) {
+            showRatingView = false
+        }
+        
+        // Clear stored data
+        capturedImage = nil
+        frameScore = nil
     }
 }
 
-// MARK: - Camera Preview View
+/// Camera preview using AVFoundation
 struct CameraPreviewView: UIViewRepresentable {
-    let viewModel: CameraViewModel
+    let session: AVCaptureSession
     
     func makeUIView(context: Context) -> UIView {
         let view = UIView(frame: UIScreen.main.bounds)
-        view.backgroundColor = .black
         
-        if let previewLayer = viewModel.getPreviewLayer() {
-            previewLayer.frame = view.bounds
-            view.layer.addSublayer(previewLayer)
-        }
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.frame = view.frame
+        previewLayer.videoGravity = .resizeAspectFill
+        
+        view.layer.addSublayer(previewLayer)
         
         return view
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
-        // Update preview layer frame if needed
         if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
-            previewLayer.frame = uiView.bounds
+            previewLayer.frame = uiView.frame
         }
     }
 }
 
-// MARK: - Preview
+/// Processing status overlay
+struct ProcessingOverlay: View {
+    let status: String
+    let progress: Double
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView(value: progress)
+                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                .scaleEffect(1.5)
+            
+            Text(status)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+    }
+}
+
+/// Capture button with processing state
+struct CaptureButton: View {
+    let isProcessing: Bool
+    let onCapture: () -> Void
+    
+    var body: some View {
+        Button(action: onCapture) {
+            ZStack {
+                Circle()
+                    .fill(.white)
+                    .frame(width: 80, height: 80)
+                
+                Circle()
+                    .stroke(.black.opacity(0.2), lineWidth: 4)
+                    .frame(width: 80, height: 80)
+                
+                if isProcessing {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                        .scaleEffect(1.2)
+                } else {
+                    Circle()
+                        .fill(.black)
+                        .frame(width: 60, height: 60)
+                }
+            }
+        }
+        .disabled(isProcessing)
+        .scaleEffect(isProcessing ? 0.9 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isProcessing)
+        .accessibilityLabel("Capture photo")
+        .accessibilityAddTraits(isProcessing ? [.notEnabled] : [])
+    }
+}
+
+// MARK: - Previews
+
 #Preview {
-    CameraView(viewModel: CameraViewModel())
+    NavigationView {
+        CameraView()
+    }
 }
 

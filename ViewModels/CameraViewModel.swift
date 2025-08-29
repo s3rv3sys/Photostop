@@ -2,7 +2,7 @@
 //  CameraViewModel.swift
 //  PhotoStop
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import SwiftUI
@@ -16,19 +16,29 @@ final class CameraViewModel: ObservableObject {
     
     // MARK: - Published Properties
     
+    // Core state
     @Published var captureState: CaptureState = .idle
     @Published var processingState: ProcessingState = .idle
     @Published var enhancedImage: UIImage?
     @Published var originalImage: UIImage?
     @Published var errorMessage: String?
+    @Published var currentError: Error?
+    
+    // UI state
     @Published var showingPaywall = false
     @Published var showingSettings = false
+    @Published var showingResult = false
     @Published var routingDecision: RoutingDecision?
     
-    // Camera preview
-    @Published var previewLayer: AVCaptureVideoPreviewLayer?
+    // Camera properties (required by CameraView)
+    @Published var captureSession: AVCaptureSession?
     @Published var isFlashOn = false
     @Published var cameraPosition: AVCaptureDevice.Position = .back
+    
+    // Processing properties (required by CameraView)
+    @Published var isProcessing = false
+    @Published var processingStatus = ""
+    @Published var processingProgress: Float = 0.0
     
     // Enhancement options
     @Published var customPrompt: String = ""
@@ -57,14 +67,15 @@ final class CameraViewModel: ObservableObject {
     // MARK: - Public Methods
     
     /// Start camera session
-    func startCamera() {
+    func startSession() {
         Task {
             do {
                 try await cameraService.startSession()
-                previewLayer = cameraService.previewLayer
+                captureSession = cameraService.captureSession
                 logger.info("Camera session started")
             } catch {
                 await MainActor.run {
+                    currentError = PhotoStopError.cameraNotAvailable
                     errorMessage = "Failed to start camera: \(error.localizedDescription)"
                 }
             }
@@ -72,15 +83,37 @@ final class CameraViewModel: ObservableObject {
     }
     
     /// Stop camera session
-    func stopCamera() {
+    func stopSession() {
         cameraService.stopSession()
-        previewLayer = nil
+        captureSession = nil
         logger.info("Camera session stopped")
+    }
+    
+    /// Toggle flash on/off
+    func toggleFlash() {
+        isFlashOn.toggle()
+        cameraService.setFlashMode(isFlashOn ? .on : .off)
+        logger.info("Flash toggled: \(isFlashOn)")
+    }
+    
+    /// Switch camera position
+    func switchCamera() {
+        cameraPosition = cameraPosition == .back ? .front : .back
+        Task {
+            do {
+                try await cameraService.switchCamera(to: cameraPosition)
+                logger.info("Camera switched to: \(cameraPosition)")
+            } catch {
+                await MainActor.run {
+                    currentError = PhotoStopError.cameraNotAvailable
+                }
+            }
+        }
     }
     
     /// Capture and enhance photo with one tap
     func captureAndEnhance() {
-        guard captureState == .idle else { return }
+        guard !isProcessing else { return }
         
         Task {
             await performCaptureAndEnhance()
@@ -101,71 +134,48 @@ final class CameraViewModel: ObservableObject {
         }
     }
     
-    /// Switch camera position
-    func switchCamera() {
-        cameraPosition = cameraPosition == .back ? .front : .back
-        
-        Task {
-            do {
-                try await cameraService.switchCamera(to: cameraPosition)
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to switch camera: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-    
-    /// Toggle flash
-    func toggleFlash() {
-        isFlashOn.toggle()
-        cameraService.setFlashMode(isFlashOn ? .on : .off)
-    }
-    
-    /// Clear current results
-    func clearResults() {
-        enhancedImage = nil
-        originalImage = nil
+    /// Clear current error
+    func clearError() {
+        currentError = nil
         errorMessage = nil
-        routingDecision = nil
-        pendingEditRequest = nil
-        captureState = .idle
-        processingState = .idle
     }
     
-    /// Handle paywall dismissal
-    func handlePaywallDismissal(purchased: Bool) {
+    /// Present paywall for upgrade
+    func presentPaywall(reason: UpgradeReason) {
+        routingDecision = .requiresUpgrade(reason: reason)
+        showingPaywall = true
+    }
+    
+    /// Handle successful purchase
+    func handlePurchaseSuccess() {
         showingPaywall = false
         
-        if purchased {
-            // Retry the pending operation
+        // Retry pending request if available
+        if pendingEditRequest != nil {
             retryEnhancement()
-        } else {
-            // User declined, clear pending request
-            pendingEditRequest = nil
-            processingState = .idle
         }
     }
     
     // MARK: - Private Methods
     
     private func setupBindings() {
-        // Listen for usage updates
-        NotificationCenter.default.publisher(for: .usageUpdated)
-            .sink { [weak self] _ in
-                self?.objectWillChange.send()
+        // Bind processing state to UI properties
+        $processingState
+            .sink { [weak self] state in
+                self?.updateProcessingUI(for: state)
             }
             .store(in: &cancellables)
         
-        // Listen for subscription changes
-        NotificationCenter.default.publisher(for: .subscriptionStatusChanged)
-            .sink { [weak self] _ in
-                self?.objectWillChange.send()
+        // Bind capture state
+        $captureState
+            .sink { [weak self] state in
+                self?.updateCaptureUI(for: state)
             }
             .store(in: &cancellables)
     }
     
     private func setupCamera() {
+        // Initialize camera service
         Task {
             await requestCameraPermission()
         }
@@ -176,285 +186,247 @@ final class CameraViewModel: ObservableObject {
         
         switch status {
         case .authorized:
-            startCamera()
+            await startSession()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
-                startCamera()
+                await startSession()
             } else {
                 await MainActor.run {
-                    errorMessage = "Camera access is required for PhotoStop"
+                    currentError = PhotoStopError.cameraPermissionDenied
                 }
             }
         case .denied, .restricted:
             await MainActor.run {
-                errorMessage = "Please enable camera access in Settings"
+                currentError = PhotoStopError.cameraPermissionDenied
             }
         @unknown default:
             await MainActor.run {
-                errorMessage = "Camera access status unknown"
+                currentError = PhotoStopError.cameraNotAvailable
             }
+        }
+    }
+    
+    private func updateProcessingUI(for state: ProcessingState) {
+        switch state {
+        case .idle:
+            isProcessing = false
+            processingStatus = ""
+            processingProgress = 0.0
+            
+        case .capturing:
+            isProcessing = true
+            processingStatus = "Capturing frames..."
+            processingProgress = 0.2
+            
+        case .analyzing:
+            isProcessing = true
+            processingStatus = "Analyzing quality..."
+            processingProgress = 0.4
+            
+        case .enhancing(let provider):
+            isProcessing = true
+            processingStatus = "Enhancing with \(provider)..."
+            processingProgress = 0.7
+            
+        case .finalizing:
+            isProcessing = true
+            processingStatus = "Finalizing result..."
+            processingProgress = 0.9
+            
+        case .completed:
+            isProcessing = false
+            processingStatus = "Complete!"
+            processingProgress = 1.0
+            showingResult = true
+            
+        case .failed(let error):
+            isProcessing = false
+            processingStatus = ""
+            processingProgress = 0.0
+            currentError = error
+        }
+    }
+    
+    private func updateCaptureUI(for state: CaptureState) {
+        switch state {
+        case .idle:
+            break
+        case .capturing:
+            processingState = .capturing
+        case .processing:
+            processingState = .analyzing
+        case .completed:
+            processingState = .completed
+        case .failed(let error):
+            processingState = .failed(error: error)
         }
     }
     
     private func performCaptureAndEnhance() async {
-        // Update capture state
+        logger.info("Starting capture and enhance workflow")
+        
+        // Update state
         captureState = .capturing
-        errorMessage = nil
         
         do {
-            // Capture burst of images
-            let capturedImages = try await cameraService.captureBurstImages(count: 5)
+            // Capture frames
+            let frameBundle = try await cameraService.captureFrameBundle()
+            logger.info("Captured \(frameBundle.frames.count) frames")
             
+            // Store original image
+            originalImage = frameBundle.bestFrame?.image
+            
+            // Update state
             captureState = .processing
-            processingState = .selectingBestFrame
             
-            // Select best frame using ML scoring
-            let bestImage = try await selectBestFrame(from: capturedImages)
-            originalImage = bestImage
-            
-            // Perform AI enhancement
-            await performEnhancement(
-                image: bestImage,
-                prompt: customPrompt.isEmpty ? nil : customPrompt,
+            // Enhance with routing
+            let editRequest = EditRequest(
+                image: frameBundle.bestFrame?.image ?? UIImage(),
+                prompt: customPrompt.isEmpty ? "enhance photo quality" : customPrompt,
                 task: selectedTask,
                 useHighQuality: useHighQuality
             )
             
-        } catch {
-            await MainActor.run {
+            // Store pending request for retry
+            pendingEditRequest = PendingEditRequest(
+                image: editRequest.image,
+                prompt: editRequest.prompt,
+                task: editRequest.task,
+                useHighQuality: editRequest.useHighQuality
+            )
+            
+            let result = await routingService.routeEdit(editRequest)
+            
+            switch result {
+            case .success(let enhancedImage, let metadata):
+                // Success
+                self.enhancedImage = enhancedImage
+                captureState = .completed
+                logger.info("Enhancement completed with \(metadata.provider)")
+                
+            case .requiresUpgrade(let reason):
+                // Show paywall
+                presentPaywall(reason: reason)
                 captureState = .idle
-                processingState = .idle
-                errorMessage = "Capture failed: \(error.localizedDescription)"
-                logger.error("Capture failed: \(error)")
+                
+            case .failed(let error):
+                // Handle error
+                captureState = .failed(error: error)
+                logger.error("Enhancement failed: \(error.localizedDescription)")
             }
+            
+        } catch {
+            captureState = .failed(error: error)
+            logger.error("Capture failed: \(error.localizedDescription)")
         }
     }
     
-    private func selectBestFrame(from images: [UIImage]) async throws -> UIImage {
-        let frameScoringService = FrameScoringService.shared
-        
-        // Score all frames
-        var bestImage = images.first!
-        var bestScore: Float = 0
-        
-        for image in images {
-            let score = try await frameScoringService.scoreImage(image)
-            if score.overallScore > bestScore {
-                bestScore = score.overallScore
-                bestImage = image
-            }
-        }
-        
-        logger.info("Selected best frame with score: \(bestScore)")
-        return bestImage
-    }
-    
-    private func performEnhancement(
-        image: UIImage,
-        prompt: String?,
-        task: EditTask,
-        useHighQuality: Bool
-    ) async {
-        
-        processingState = .enhancing
-        
-        // Store pending request for potential retry
-        pendingEditRequest = PendingEditRequest(
+    private func performEnhancement(image: UIImage, prompt: String, task: EditTask, useHighQuality: Bool) async {
+        let editRequest = EditRequest(
             image: image,
             prompt: prompt,
             task: task,
             useHighQuality: useHighQuality
         )
         
-        do {
-            // Get routing decision first
-            let decision = routingService.getRoutingDecision(
-                for: task,
-                tier: usageTracker.currentTier,
-                imageSize: image.size
-            )
+        processingState = .enhancing(provider: "AI")
+        
+        let result = await routingService.routeEdit(editRequest)
+        
+        switch result {
+        case .success(let enhancedImage, let metadata):
+            self.enhancedImage = enhancedImage
+            processingState = .completed
+            logger.info("Retry enhancement completed with \(metadata.provider)")
             
-            routingDecision = decision
+        case .requiresUpgrade(let reason):
+            presentPaywall(reason: reason)
+            processingState = .idle
             
-            // Check if user has sufficient credits
-            if decision.willConsumeCredit && !usageTracker.canPerform(decision.costClass) {
-                await MainActor.run {
-                    processingState = .idle
-                    showingPaywall = true
-                }
-                return
-            }
-            
-            // Perform the enhancement
-            let result = try await routingService.requestEdit(
-                source: image,
-                prompt: prompt,
-                requestedTask: task,
-                tier: usageTracker.currentTier,
-                targetSize: nil,
-                allowWatermark: !useHighQuality,
-                quality: useHighQuality ? 0.95 : 0.8
-            )
-            
-            await MainActor.run {
-                enhancedImage = result.image
-                captureState = .completed
-                processingState = .completed
-                pendingEditRequest = nil
-                
-                logger.info("Enhancement completed using \(result.provider.rawValue)")
-            }
-            
-        } catch let error as RoutingError {
-            await handleRoutingError(error)
-        } catch {
-            await MainActor.run {
-                processingState = .failed
-                errorMessage = "Enhancement failed: \(error.localizedDescription)"
-                logger.error("Enhancement failed: \(error)")
-            }
-        }
-    }
-    
-    private func handleRoutingError(_ error: RoutingError) async {
-        await MainActor.run {
-            switch error {
-            case .insufficientCredits(let required, let remaining):
-                processingState = .idle
-                showingPaywall = true
-                errorMessage = "Need \(required.description) credits. \(remaining) remaining."
-                
-            case .allProvidersFailed(let originalError):
-                processingState = .failed
-                errorMessage = "All AI providers failed. Try again later."
-                logger.error("All providers failed: \(originalError)")
-                
-            case .noProvidersAvailable:
-                processingState = .failed
-                errorMessage = "No AI providers available for this task."
-                
-            case .unknownError(let underlyingError):
-                processingState = .failed
-                errorMessage = "Enhancement failed: \(underlyingError.localizedDescription)"
-            }
+        case .failed(let error):
+            processingState = .failed(error: error)
+            logger.error("Retry enhancement failed: \(error.localizedDescription)")
         }
     }
 }
 
 // MARK: - Supporting Types
 
-extension CameraViewModel {
+/// Capture states
+enum CaptureState: Equatable {
+    case idle
+    case capturing
+    case processing
+    case completed
+    case failed(error: Error)
     
-    enum CaptureState {
-        case idle
-        case capturing
-        case processing
-        case completed
-        case failed
-        
-        var description: String {
-            switch self {
-            case .idle: return "Ready"
-            case .capturing: return "Capturing..."
-            case .processing: return "Processing..."
-            case .completed: return "Complete"
-            case .failed: return "Failed"
-            }
+    static func == (lhs: CaptureState, rhs: CaptureState) -> Bool {
+        switch (lhs, rhs) {
+        case (.idle, .idle),
+             (.capturing, .capturing),
+             (.processing, .processing),
+             (.completed, .completed):
+            return true
+        case (.failed, .failed):
+            return true
+        default:
+            return false
         }
-    }
-    
-    enum ProcessingState {
-        case idle
-        case selectingBestFrame
-        case enhancing
-        case completed
-        case failed
-        
-        var description: String {
-            switch self {
-            case .idle: return ""
-            case .selectingBestFrame: return "Selecting best frame..."
-            case .enhancing: return "Enhancing with AI..."
-            case .completed: return "Enhancement complete!"
-            case .failed: return "Enhancement failed"
-            }
-        }
-        
-        var progress: Double {
-            switch self {
-            case .idle: return 0.0
-            case .selectingBestFrame: return 0.3
-            case .enhancing: return 0.7
-            case .completed: return 1.0
-            case .failed: return 0.0
-            }
-        }
-    }
-    
-    private struct PendingEditRequest {
-        let image: UIImage
-        let prompt: String?
-        let task: EditTask
-        let useHighQuality: Bool
     }
 }
 
-// MARK: - Computed Properties
-
-extension CameraViewModel {
+/// Edit tasks
+enum EditTask: String, CaseIterable {
+    case simpleEnhance = "enhance"
+    case portraitMode = "portrait"
+    case backgroundRemoval = "background"
+    case colorCorrection = "color"
+    case noiseReduction = "denoise"
+    case sharpening = "sharpen"
+    case hdrEffect = "hdr"
     
-    /// Whether capture is currently in progress
-    var isCapturing: Bool {
-        captureState == .capturing || captureState == .processing
-    }
-    
-    /// Whether enhancement is in progress
-    var isProcessing: Bool {
-        processingState != .idle && processingState != .completed && processingState != .failed
-    }
-    
-    /// Current processing progress (0.0 to 1.0)
-    var processingProgress: Double {
-        processingState.progress
-    }
-    
-    /// Whether results are available
-    var hasResults: Bool {
-        enhancedImage != nil && originalImage != nil
-    }
-    
-    /// Current usage statistics
-    var usageStats: (budget: Int, premium: Int, budgetRemaining: Int, premiumRemaining: Int) {
-        let tier = usageTracker.currentTier
-        let budgetRemaining = usageTracker.remaining(for: tier, cost: .budget)
-        let premiumRemaining = usageTracker.remaining(for: tier, cost: .premium)
-        let budgetCapacity = usageTracker.capacity(for: tier, cost: .budget)
-        let premiumCapacity = usageTracker.capacity(for: tier, cost: .premium)
-        
-        return (
-            budget: budgetCapacity - budgetRemaining,
-            premium: premiumCapacity - premiumRemaining,
-            budgetRemaining: budgetRemaining,
-            premiumRemaining: premiumRemaining
-        )
-    }
-    
-    /// Whether user should be encouraged to upgrade
-    var shouldShowUpgradePrompt: Bool {
-        let tier = usageTracker.currentTier
-        if tier == .pro { return false }
-        
-        let budgetRemaining = usageTracker.remaining(for: tier, cost: .budget)
-        let premiumRemaining = usageTracker.remaining(for: tier, cost: .premium)
-        
-        return budgetRemaining < 10 || premiumRemaining < 2
+    var displayName: String {
+        switch self {
+        case .simpleEnhance: return "Simple Enhancement"
+        case .portraitMode: return "Portrait Mode"
+        case .backgroundRemoval: return "Background Removal"
+        case .colorCorrection: return "Color Correction"
+        case .noiseReduction: return "Noise Reduction"
+        case .sharpening: return "Sharpening"
+        case .hdrEffect: return "HDR Effect"
+        }
     }
 }
 
-// MARK: - Notification Names
+/// Pending edit request for retry
+struct PendingEditRequest {
+    let image: UIImage
+    let prompt: String
+    let task: EditTask
+    let useHighQuality: Bool
+}
 
-extension Notification.Name {
-    static let subscriptionStatusChanged = Notification.Name("CameraViewModel.subscriptionStatusChanged")
+/// Edit request structure
+struct EditRequest {
+    let image: UIImage
+    let prompt: String
+    let task: EditTask
+    let useHighQuality: Bool
+}
+
+/// Edit result from routing service
+enum EditResult {
+    case success(image: UIImage, metadata: EditMetadata)
+    case requiresUpgrade(reason: UpgradeReason)
+    case failed(error: Error)
+}
+
+/// Edit metadata
+struct EditMetadata {
+    let provider: String
+    let processingTime: TimeInterval
+    let creditsUsed: Int
+    let quality: Float
 }
 
