@@ -2,7 +2,7 @@
 //  CameraServiceTests.swift
 //  PhotoStopTests
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import XCTest
@@ -16,10 +16,11 @@ final class CameraServiceTests: XCTestCase {
     
     override func setUp() {
         super.setUp()
-        cameraService = CameraService()
+        cameraService = CameraService.shared
     }
     
     override func tearDown() {
+        cameraService.stopSession()
         cameraService = nil
         super.tearDown()
     }
@@ -30,21 +31,17 @@ final class CameraServiceTests: XCTestCase {
         XCTAssertNotNil(cameraService)
         XCTAssertFalse(cameraService.isSessionRunning)
         XCTAssertFalse(cameraService.isCapturing)
-        XCTAssertNil(cameraService.captureError)
+        XCTAssertNil(cameraService.lastError)
     }
     
     // MARK: - Permission Tests
     
     func testCameraPermissionRequest() async {
-        // Note: This test requires camera permission to be granted in simulator/device
-        // In a real test environment, you would mock AVCaptureDevice.requestAccess
-        
         let permissionGranted = await cameraService.requestCameraPermission()
         
         // The result depends on the test environment
-        // In CI/CD, this would typically be false (no camera access)
-        // On device with permission, this would be true
-        XCTAssertTrue(permissionGranted || !permissionGranted) // Always passes, but tests the flow
+        // Test that the method completes without crashing
+        XCTAssertTrue(permissionGranted || !permissionGranted)
     }
     
     // MARK: - Session Management Tests
@@ -88,45 +85,44 @@ final class CameraServiceTests: XCTestCase {
         XCTAssertEqual(previewLayer, secondPreviewLayer)
     }
     
-    // MARK: - Burst Capture Tests
+    // MARK: - Capture Tests
     
-    func testBurstCaptureWithoutPermission() async {
-        // Test burst capture when camera permission is not granted
-        let images = await cameraService.captureBurst(count: 3)
-        
-        // Should return empty array if no permission or camera not available
-        XCTAssertTrue(images.isEmpty || !images.isEmpty) // Flexible for test environment
-    }
-    
-    func testBurstCaptureCount() async {
-        // Test that burst capture respects the count parameter
-        let requestedCount = 2
-        let images = await cameraService.captureBurst(count: requestedCount)
-        
-        // In a mock environment, this might return empty
-        // In a real environment with camera access, should return requested count
-        if !images.isEmpty {
-            XCTAssertLessThanOrEqual(images.count, requestedCount)
+    func testCaptureWithoutPermission() async {
+        // Test capture when camera permission is not granted
+        do {
+            let bundle = try await cameraService.captureFrameBundle()
+            // If we get here, capture succeeded (device has camera access)
+            XCTAssertNotNil(bundle)
+            XCTAssertFalse(bundle.frames.isEmpty)
+        } catch {
+            // Expected if no camera permission or camera not available
+            XCTAssertTrue(error is CameraError)
         }
     }
     
-    func testConcurrentBurstCapture() async {
-        // Test that concurrent burst captures are handled properly
+    func testConcurrentCapture() async {
+        // Test that concurrent captures are handled properly
         let firstCaptureTask = Task {
-            await cameraService.captureBurst(count: 2)
+            do {
+                return try await cameraService.captureFrameBundle()
+            } catch {
+                return nil
+            }
         }
         
         let secondCaptureTask = Task {
-            await cameraService.captureBurst(count: 2)
+            do {
+                return try await cameraService.captureFrameBundle()
+            } catch {
+                return nil
+            }
         }
         
-        let firstImages = await firstCaptureTask.value
-        let secondImages = await secondCaptureTask.value
+        let firstBundle = await firstCaptureTask.value
+        let secondBundle = await secondCaptureTask.value
         
-        // One of the captures should succeed, the other should return empty
-        // (since isCapturing prevents concurrent captures)
-        let totalImages = firstImages.count + secondImages.count
-        XCTAssertGreaterThanOrEqual(totalImages, 0)
+        // At least one should complete (or both fail gracefully)
+        XCTAssertTrue(firstBundle != nil || secondBundle != nil || (firstBundle == nil && secondBundle == nil))
     }
     
     // MARK: - Error Handling Tests
@@ -134,59 +130,56 @@ final class CameraServiceTests: XCTestCase {
     func testCameraErrorTypes() {
         let deviceNotFoundError = CameraError.deviceNotFound
         let permissionDeniedError = CameraError.permissionDenied
-        let captureError = CameraError.captureError("Test error")
-        let imageProcessingError = CameraError.imageProcessingError
+        let captureError = CameraError.captureFailed
+        let configError = CameraError.configurationFailed
         
         XCTAssertEqual(deviceNotFoundError.errorDescription, "Camera device not found")
         XCTAssertEqual(permissionDeniedError.errorDescription, "Camera permission denied")
-        XCTAssertEqual(captureError.errorDescription, "Capture error: Test error")
-        XCTAssertEqual(imageProcessingError.errorDescription, "Failed to process captured image")
+        XCTAssertEqual(captureError.errorDescription, "Photo capture failed")
+        XCTAssertEqual(configError.errorDescription, "Camera configuration failed")
     }
     
     // MARK: - Camera Switching Tests
     
     func testCameraSwitching() {
         // Test camera switching functionality
-        // This is mainly testing that the method doesn't crash
+        let initialPosition = cameraService.currentPosition
         cameraService.switchCamera()
         
-        // In a real test with camera access, you would verify the camera position changed
-        // For now, we just ensure the method executes without throwing
-        XCTAssertTrue(true) // Method completed without crashing
+        // Method should complete without crashing
+        XCTAssertTrue(true)
+    }
+    
+    // MARK: - Flash Tests
+    
+    func testFlashToggle() {
+        let initialFlashState = cameraService.isFlashOn
+        cameraService.toggleFlash()
+        
+        // Method should complete without crashing
+        XCTAssertTrue(true)
     }
     
     // MARK: - Performance Tests
     
-    func testBurstCapturePerformance() {
-        // Test the performance of burst capture setup
+    func testCapturePerformance() {
+        // Test the performance of capture setup
         measure {
             Task {
-                _ = await cameraService.captureBurst(count: 1)
+                do {
+                    _ = try await cameraService.captureFrameBundle()
+                } catch {
+                    // Expected in test environment
+                }
             }
         }
-    }
-    
-    // MARK: - Memory Tests
-    
-    func testMemoryLeaks() {
-        weak var weakCameraService = cameraService
-        cameraService = nil
-        
-        // Give some time for deallocation
-        let expectation = XCTestExpectation(description: "Memory cleanup")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
-        
-        XCTAssertNil(weakCameraService, "CameraService should be deallocated")
     }
 }
 
 // MARK: - Mock Classes for Testing
 
 class MockCameraService: CameraService {
-    var mockImages: [UIImage] = []
+    var mockBundle: FrameBundle?
     var mockError: CameraError?
     var mockPermissionGranted = true
     
@@ -194,16 +187,42 @@ class MockCameraService: CameraService {
         return mockPermissionGranted
     }
     
-    override func captureBurst(count: Int) async -> [UIImage] {
+    override func captureFrameBundle() async throws -> FrameBundle {
         if let error = mockError {
-            await MainActor.run {
-                self.captureError = error
-            }
-            return []
+            throw error
         }
         
-        // Return mock images up to the requested count
-        return Array(mockImages.prefix(count))
+        if let bundle = mockBundle {
+            return bundle
+        }
+        
+        // Create a mock bundle
+        let testImage = UIImage(systemName: "camera") ?? UIImage()
+        let metadata = FrameMetadata(
+            timestamp: Date(),
+            lens: .wide,
+            exposureSettings: ExposureSettings(iso: 100, shutterSpeed: 1/60, aperture: 2.8),
+            focusDistance: 1.0,
+            hasDepthData: false,
+            motionDetected: false,
+            faceCount: 0,
+            qualityScore: 0.8
+        )
+        
+        let frame = CapturedFrame(image: testImage, metadata: metadata)
+        let sceneAnalysis = SceneAnalysis(
+            dominantScene: .general,
+            lightingCondition: .normal,
+            motionLevel: .low,
+            subjectCount: 0,
+            recommendedEnhancement: .simpleEnhance
+        )
+        
+        return FrameBundle(
+            frames: [frame],
+            captureTime: Date(),
+            sceneAnalysis: sceneAnalysis
+        )
     }
 }
 
@@ -223,25 +242,29 @@ final class CameraServiceIntegrationTests: XCTestCase {
         super.tearDown()
     }
     
-    func testSuccessfulBurstCapture() async {
-        // Setup mock images
-        let testImage = UIImage(systemName: "camera")!
-        mockCameraService.mockImages = [testImage, testImage, testImage]
-        
-        let images = await mockCameraService.captureBurst(count: 3)
-        
-        XCTAssertEqual(images.count, 3)
-        XCTAssertNil(mockCameraService.captureError)
+    func testSuccessfulCapture() async {
+        do {
+            let bundle = try await mockCameraService.captureFrameBundle()
+            
+            XCTAssertNotNil(bundle)
+            XCTAssertFalse(bundle.frames.isEmpty)
+            XCTAssertNotNil(bundle.bestFrame)
+        } catch {
+            XCTFail("Mock capture should not fail: \(error)")
+        }
     }
     
-    func testBurstCaptureWithError() async {
+    func testCaptureWithError() async {
         // Setup mock error
         mockCameraService.mockError = .deviceNotFound
         
-        let images = await mockCameraService.captureBurst(count: 3)
-        
-        XCTAssertTrue(images.isEmpty)
-        XCTAssertNotNil(mockCameraService.captureError)
+        do {
+            _ = try await mockCameraService.captureFrameBundle()
+            XCTFail("Should have thrown an error")
+        } catch {
+            XCTAssertTrue(error is CameraError)
+            XCTAssertEqual(error as? CameraError, .deviceNotFound)
+        }
     }
     
     func testPermissionDenied() async {

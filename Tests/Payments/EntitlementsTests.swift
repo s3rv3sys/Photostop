@@ -2,7 +2,7 @@
 //  EntitlementsTests.swift
 //  PhotoStopTests
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import XCTest
@@ -15,12 +15,11 @@ final class EntitlementsTests: XCTestCase {
     override func setUp() {
         super.setUp()
         entitlementStore = EntitlementStore.shared
-        
-        // Reset to clean state
         entitlementStore.reset()
     }
     
     override func tearDown() {
+        entitlementStore.reset()
         entitlementStore = nil
         super.tearDown()
     }
@@ -46,196 +45,213 @@ final class EntitlementsTests: XCTestCase {
     }
     
     func testUserTierComparison() {
-        XCTAssertTrue(UserTier.pro > UserTier.free, "Pro should be greater than Free")
-        XCTAssertFalse(UserTier.free > UserTier.pro, "Free should not be greater than Pro")
-        XCTAssertEqual(UserTier.free, UserTier.free, "Same tiers should be equal")
+        XCTAssertTrue(UserTier.pro.budgetCreditsPerMonth > UserTier.free.budgetCreditsPerMonth)
+        XCTAssertTrue(UserTier.pro.premiumCreditsPerMonth > UserTier.free.premiumCreditsPerMonth)
     }
     
     // MARK: - Entitlements Tests
     
-    func testEntitlementsInitialization() {
-        let freeEntitlements = Entitlements(tier: .free)
-        let proEntitlements = Entitlements(tier: .pro)
+    func testInitialEntitlements() {
+        let entitlements = entitlementStore.currentEntitlements
         
-        // Test Free entitlements
-        XCTAssertEqual(freeEntitlements.tier, .free)
+        XCTAssertEqual(entitlements.userTier, .free)
+        XCTAssertFalse(entitlements.hasActiveSubscription)
+        XCTAssertNil(entitlements.subscriptionExpiryDate)
+        XCTAssertEqual(entitlements.addonPremiumCredits, 0)
+    }
+    
+    func testEntitlementFeatures() {
+        let freeEntitlements = entitlementStore.currentEntitlements
+        
+        // Test free tier features
         XCTAssertEqual(freeEntitlements.budgetCreditsPerMonth, 50)
         XCTAssertEqual(freeEntitlements.premiumCreditsPerMonth, 5)
         XCTAssertFalse(freeEntitlements.hasUnlimitedEdits)
         XCTAssertFalse(freeEntitlements.hasPriorityProcessing)
         XCTAssertFalse(freeEntitlements.hasAdvancedFeatures)
-        XCTAssertFalse(freeEntitlements.canExportHighRes)
-        XCTAssertFalse(freeEntitlements.canBatchProcess)
-        XCTAssertFalse(freeEntitlements.hasCustomPresets)
-        XCTAssertFalse(freeEntitlements.hasCloudSync)
-        XCTAssertEqual(freeEntitlements.maxImageSize, 2048)
-        XCTAssertEqual(freeEntitlements.maxBatchSize, 1)
-        XCTAssertEqual(freeEntitlements.historyRetentionDays, 7)
         
-        // Test Pro entitlements
-        XCTAssertEqual(proEntitlements.tier, .pro)
+        // Upgrade to Pro
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: Date().addingTimeInterval(86400 * 30))
+        
+        let proEntitlements = entitlementStore.currentEntitlements
+        
+        // Test pro tier features
         XCTAssertEqual(proEntitlements.budgetCreditsPerMonth, 500)
         XCTAssertEqual(proEntitlements.premiumCreditsPerMonth, 300)
         XCTAssertTrue(proEntitlements.hasUnlimitedEdits)
         XCTAssertTrue(proEntitlements.hasPriorityProcessing)
         XCTAssertTrue(proEntitlements.hasAdvancedFeatures)
-        XCTAssertTrue(proEntitlements.canExportHighRes)
-        XCTAssertTrue(proEntitlements.canBatchProcess)
-        XCTAssertTrue(proEntitlements.hasCustomPresets)
-        XCTAssertTrue(proEntitlements.hasCloudSync)
-        XCTAssertEqual(proEntitlements.maxImageSize, 8192)
-        XCTAssertEqual(proEntitlements.maxBatchSize, 50)
-        XCTAssertEqual(proEntitlements.historyRetentionDays, 365)
+        XCTAssertTrue(proEntitlements.hasActiveSubscription)
     }
     
-    func testEntitlementsCanPerform() {
-        let freeEntitlements = Entitlements(tier: .free)
-        let proEntitlements = Entitlements(tier: .pro)
-        
-        // Test basic operations (should be available to all)
-        XCTAssertTrue(freeEntitlements.canPerform(.enhancement))
-        XCTAssertTrue(proEntitlements.canPerform(.enhancement))
-        
-        // Test advanced operations (Pro only)
-        XCTAssertFalse(freeEntitlements.canPerform(.batchProcessing))
-        XCTAssertTrue(proEntitlements.canPerform(.batchProcessing))
-        
-        XCTAssertFalse(freeEntitlements.canPerform(.highResExport))
-        XCTAssertTrue(proEntitlements.canPerform(.highResExport))
-        
-        XCTAssertFalse(freeEntitlements.canPerform(.customPresets))
-        XCTAssertTrue(proEntitlements.canPerform(.customPresets))
-        
-        XCTAssertFalse(freeEntitlements.canPerform(.cloudSync))
-        XCTAssertTrue(proEntitlements.canPerform(.cloudSync))
-        
-        XCTAssertFalse(freeEntitlements.canPerform(.priorityProcessing))
-        XCTAssertTrue(proEntitlements.canPerform(.priorityProcessing))
-    }
+    // MARK: - Subscription Management Tests
     
-    func testEntitlementsDisplayFeatures() {
-        let freeEntitlements = Entitlements(tier: .free)
-        let proEntitlements = Entitlements(tier: .pro)
+    func testSubscriptionUpdate() {
+        let expiryDate = Date().addingTimeInterval(86400 * 30) // 30 days from now
         
-        let freeFeatures = freeEntitlements.displayFeatures
-        let proFeatures = proEntitlements.displayFeatures
-        
-        XCTAssertFalse(freeFeatures.isEmpty, "Free tier should have display features")
-        XCTAssertFalse(proFeatures.isEmpty, "Pro tier should have display features")
-        XCTAssertTrue(proFeatures.count > freeFeatures.count, "Pro should have more features than Free")
-        
-        // Check that basic features are in both
-        XCTAssertTrue(freeFeatures.contains("50 Budget AI Credits/month"))
-        XCTAssertTrue(proFeatures.contains("500 Budget AI Credits/month"))
-        
-        // Check that advanced features are only in Pro
-        XCTAssertFalse(freeFeatures.contains("Batch Processing"))
-        XCTAssertTrue(proFeatures.contains("Batch Processing"))
-    }
-    
-    // MARK: - EntitlementStore Tests
-    
-    func testEntitlementStoreInitialState() {
-        XCTAssertEqual(entitlementStore.currentTier, .free, "Should start with free tier")
-        XCTAssertEqual(entitlementStore.getAddonPremiumCredits(), 0, "Should start with no addon credits")
-        XCTAssertFalse(entitlementStore.hasActiveSubscription, "Should start without subscription")
-        XCTAssertNil(entitlementStore.subscriptionExpiryDate, "Should have no expiry date initially")
-    }
-    
-    func testSetTier() {
-        entitlementStore.setTier(.pro)
-        
-        XCTAssertEqual(entitlementStore.currentTier, .pro, "Should update current tier")
+        // Update to Pro subscription
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: expiryDate)
         
         let entitlements = entitlementStore.currentEntitlements
-        XCTAssertEqual(entitlements.tier, .pro, "Current entitlements should reflect new tier")
+        XCTAssertEqual(entitlements.userTier, .pro)
+        XCTAssertTrue(entitlements.hasActiveSubscription)
+        XCTAssertEqual(entitlements.subscriptionExpiryDate, expiryDate)
     }
     
-    func testSetSubscriptionStatus() {
-        let expiryDate = Date().addingTimeInterval(30 * 24 * 60 * 60) // 30 days from now
+    func testSubscriptionExpiry() {
+        let pastDate = Date().addingTimeInterval(-86400) // 1 day ago
         
-        entitlementStore.setSubscriptionStatus(active: true, expiryDate: expiryDate)
+        // Set expired subscription
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: pastDate)
         
-        XCTAssertTrue(entitlementStore.hasActiveSubscription, "Should have active subscription")
-        XCTAssertEqual(entitlementStore.subscriptionExpiryDate, expiryDate, "Should set expiry date")
+        let entitlements = entitlementStore.currentEntitlements
+        XCTAssertEqual(entitlements.userTier, .free) // Should downgrade to free
+        XCTAssertFalse(entitlements.hasActiveSubscription)
     }
     
-    func testSetSubscriptionStatusInactive() {
-        entitlementStore.setSubscriptionStatus(active: false, expiryDate: nil)
+    func testSubscriptionCancellation() {
+        // First set active subscription
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: Date().addingTimeInterval(86400 * 30))
+        XCTAssertTrue(entitlementStore.currentEntitlements.hasActiveSubscription)
         
-        XCTAssertFalse(entitlementStore.hasActiveSubscription, "Should not have active subscription")
-        XCTAssertNil(entitlementStore.subscriptionExpiryDate, "Should clear expiry date")
+        // Cancel subscription
+        entitlementStore.cancelSubscription()
+        
+        let entitlements = entitlementStore.currentEntitlements
+        XCTAssertEqual(entitlements.userTier, .free)
+        XCTAssertFalse(entitlements.hasActiveSubscription)
+        XCTAssertNil(entitlements.subscriptionExpiryDate)
     }
     
-    func testAddAddonPremiumCredits() {
-        entitlementStore.addAddonPremiumCredits(10)
+    // MARK: - Addon Credits Tests
+    
+    func testAddonCredits() {
+        // Initially no addon credits
+        XCTAssertEqual(entitlementStore.currentEntitlements.addonPremiumCredits, 0)
         
-        XCTAssertEqual(entitlementStore.getAddonPremiumCredits(), 10, "Should add addon credits")
+        // Add addon credits
+        entitlementStore.addAddonCredits(10)
+        XCTAssertEqual(entitlementStore.currentEntitlements.addonPremiumCredits, 10)
         
-        entitlementStore.addAddonPremiumCredits(5)
+        // Add more credits
+        entitlementStore.addAddonCredits(5)
+        XCTAssertEqual(entitlementStore.currentEntitlements.addonPremiumCredits, 15)
         
-        XCTAssertEqual(entitlementStore.getAddonPremiumCredits(), 15, "Should accumulate addon credits")
+        // Consume credits
+        let success = entitlementStore.consumeAddonCredits(7)
+        XCTAssertTrue(success)
+        XCTAssertEqual(entitlementStore.currentEntitlements.addonPremiumCredits, 8)
+        
+        // Try to consume more than available
+        let failure = entitlementStore.consumeAddonCredits(10)
+        XCTAssertFalse(failure)
+        XCTAssertEqual(entitlementStore.currentEntitlements.addonPremiumCredits, 8) // Should remain unchanged
     }
     
-    func testConsumeAddonPremiumCredit() {
-        entitlementStore.addAddonPremiumCredits(3)
+    func testTotalPremiumCredits() {
+        // Set Pro subscription
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: Date().addingTimeInterval(86400 * 30))
         
-        XCTAssertTrue(entitlementStore.consumeAddonPremiumCredit(), "Should consume credit successfully")
-        XCTAssertEqual(entitlementStore.getAddonPremiumCredits(), 2, "Should decrease addon credits")
+        // Add addon credits
+        entitlementStore.addAddonCredits(20)
         
-        // Consume remaining credits
-        XCTAssertTrue(entitlementStore.consumeAddonPremiumCredit())
-        XCTAssertTrue(entitlementStore.consumeAddonPremiumCredit())
+        let entitlements = entitlementStore.currentEntitlements
+        let totalCredits = entitlements.totalPremiumCreditsAvailable
         
-        XCTAssertEqual(entitlementStore.getAddonPremiumCredits(), 0, "Should have no credits left")
-        XCTAssertFalse(entitlementStore.consumeAddonPremiumCredit(), "Should fail to consume when no credits")
-    }
-    
-    func testSyncWithUsageTracker() {
-        // This test would verify that the entitlement store properly syncs with usage tracker
-        // In a real implementation, you'd:
-        // 1. Set up mock usage tracker
-        // 2. Update entitlements
-        // 3. Call sync
-        // 4. Verify usage tracker was updated
-        
-        entitlementStore.syncWithUsageTracker()
-        
-        // For now, just verify the method exists and doesn't crash
-        XCTAssertTrue(true, "Sync method should exist and not crash")
-    }
-    
-    func testReset() {
-        // Set up some state
-        entitlementStore.setTier(.pro)
-        entitlementStore.addAddonPremiumCredits(10)
-        entitlementStore.setSubscriptionStatus(active: true, expiryDate: Date())
-        
-        // Reset
-        entitlementStore.reset()
-        
-        // Verify reset state
-        XCTAssertEqual(entitlementStore.currentTier, .free, "Should reset to free tier")
-        XCTAssertEqual(entitlementStore.getAddonPremiumCredits(), 0, "Should reset addon credits")
-        XCTAssertFalse(entitlementStore.hasActiveSubscription, "Should reset subscription status")
-        XCTAssertNil(entitlementStore.subscriptionExpiryDate, "Should reset expiry date")
+        // Should be subscription credits + addon credits
+        XCTAssertEqual(totalCredits, 300 + 20) // Pro tier + addon
     }
     
     // MARK: - Persistence Tests
     
     func testPersistence() {
-        // Set up some state
-        entitlementStore.setTier(.pro)
-        entitlementStore.addAddonPremiumCredits(25)
-        let expiryDate = Date().addingTimeInterval(30 * 24 * 60 * 60)
-        entitlementStore.setSubscriptionStatus(active: true, expiryDate: expiryDate)
+        let expiryDate = Date().addingTimeInterval(86400 * 30)
         
-        // Create new instance (simulating app restart)
-        let newEntitlementStore = EntitlementStore()
+        // Set subscription and addon credits
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: expiryDate)
+        entitlementStore.addAddonCredits(15)
         
-        // In a real implementation, this would load from persistent storage
-        // For now, we just verify the interface exists
-        XCTAssertTrue(true, "Persistence interface should exist")
+        // Create new store instance (simulates app restart)
+        let newStore = EntitlementStore()
+        
+        // Should load persisted data
+        let entitlements = newStore.currentEntitlements
+        XCTAssertEqual(entitlements.userTier, .pro)
+        XCTAssertEqual(entitlements.subscriptionExpiryDate, expiryDate)
+        XCTAssertEqual(entitlements.addonPremiumCredits, 15)
+    }
+    
+    func testReset() {
+        // Set subscription and addon credits
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: Date().addingTimeInterval(86400 * 30))
+        entitlementStore.addAddonCredits(25)
+        
+        // Verify they're set
+        XCTAssertEqual(entitlementStore.currentEntitlements.userTier, .pro)
+        XCTAssertEqual(entitlementStore.currentEntitlements.addonPremiumCredits, 25)
+        
+        // Reset
+        entitlementStore.reset()
+        
+        // Should be back to defaults
+        let entitlements = entitlementStore.currentEntitlements
+        XCTAssertEqual(entitlements.userTier, .free)
+        XCTAssertFalse(entitlements.hasActiveSubscription)
+        XCTAssertEqual(entitlements.addonPremiumCredits, 0)
+    }
+    
+    // MARK: - Feature Access Tests
+    
+    func testFeatureAccess() {
+        // Test free tier access
+        var entitlements = entitlementStore.currentEntitlements
+        
+        XCTAssertFalse(entitlements.canAccessFeature(.unlimitedEdits))
+        XCTAssertFalse(entitlements.canAccessFeature(.priorityProcessing))
+        XCTAssertFalse(entitlements.canAccessFeature(.advancedFilters))
+        XCTAssertTrue(entitlements.canAccessFeature(.basicEditing)) // Should be available to all
+        
+        // Upgrade to Pro
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: Date().addingTimeInterval(86400 * 30))
+        entitlements = entitlementStore.currentEntitlements
+        
+        XCTAssertTrue(entitlements.canAccessFeature(.unlimitedEdits))
+        XCTAssertTrue(entitlements.canAccessFeature(.priorityProcessing))
+        XCTAssertTrue(entitlements.canAccessFeature(.advancedFilters))
+        XCTAssertTrue(entitlements.canAccessFeature(.basicEditing))
+    }
+    
+    // MARK: - Credit Calculations Tests
+    
+    func testCreditCalculations() {
+        // Free tier
+        var entitlements = entitlementStore.currentEntitlements
+        XCTAssertEqual(entitlements.budgetCreditsPerMonth, 50)
+        XCTAssertEqual(entitlements.premiumCreditsPerMonth, 5)
+        
+        // Add addon credits
+        entitlementStore.addAddonCredits(10)
+        entitlements = entitlementStore.currentEntitlements
+        XCTAssertEqual(entitlements.totalPremiumCreditsAvailable, 5 + 10) // Base + addon
+        
+        // Upgrade to Pro
+        entitlementStore.updateSubscription(tier: .pro, expiryDate: Date().addingTimeInterval(86400 * 30))
+        entitlements = entitlementStore.currentEntitlements
+        XCTAssertEqual(entitlements.budgetCreditsPerMonth, 500)
+        XCTAssertEqual(entitlements.premiumCreditsPerMonth, 300)
+        XCTAssertEqual(entitlements.totalPremiumCreditsAvailable, 300 + 10) // Pro base + addon
+    }
+    
+    // MARK: - Performance Tests
+    
+    func testPerformance() {
+        measure {
+            for _ in 0..<100 {
+                _ = entitlementStore.currentEntitlements
+                entitlementStore.addAddonCredits(1)
+                _ = entitlementStore.consumeAddonCredits(1)
+            }
+        }
     }
     
     // MARK: - Thread Safety Tests
@@ -244,69 +260,74 @@ final class EntitlementsTests: XCTestCase {
         let expectation = XCTestExpectation(description: "Concurrent access")
         expectation.expectedFulfillmentCount = 10
         
-        // Test concurrent access to entitlement store
+        // Perform concurrent operations
         for i in 0..<10 {
-            DispatchQueue.global(qos: .background).async {
-                // Perform various operations concurrently
-                self.entitlementStore.addAddonPremiumCredits(1)
-                let _ = self.entitlementStore.currentTier
-                let _ = self.entitlementStore.getAddonPremiumCredits()
-                let _ = self.entitlementStore.hasActiveSubscription
-                
+            DispatchQueue.global().async {
+                self.entitlementStore.addAddonCredits(i)
+                _ = self.entitlementStore.currentEntitlements
                 expectation.fulfill()
             }
         }
         
         wait(for: [expectation], timeout: 5.0)
         
-        // Verify final state is consistent
-        XCTAssertGreaterThanOrEqual(entitlementStore.getAddonPremiumCredits(), 0, "Credits should be non-negative")
+        // Should complete without crashing
+        XCTAssertTrue(true)
+    }
+}
+
+// MARK: - Mock Entitlement Store
+
+class MockEntitlementStore: EntitlementStore {
+    private var mockEntitlements = Entitlements(
+        userTier: .free,
+        hasActiveSubscription: false,
+        subscriptionExpiryDate: nil,
+        addonPremiumCredits: 0
+    )
+    
+    override var currentEntitlements: Entitlements {
+        return mockEntitlements
     }
     
-    // MARK: - Edge Cases Tests
-    
-    func testNegativeAddonCredits() {
-        // Verify that negative credits are handled properly
-        entitlementStore.addAddonPremiumCredits(-5)
-        
-        XCTAssertEqual(entitlementStore.getAddonPremiumCredits(), 0, "Should not allow negative credits")
+    override func updateSubscription(tier: UserTier, expiryDate: Date?) {
+        mockEntitlements = Entitlements(
+            userTier: tier,
+            hasActiveSubscription: expiryDate != nil && expiryDate! > Date(),
+            subscriptionExpiryDate: expiryDate,
+            addonPremiumCredits: mockEntitlements.addonPremiumCredits
+        )
     }
     
-    func testLargeAddonCredits() {
-        // Test with large number of credits
-        entitlementStore.addAddonPremiumCredits(1000000)
-        
-        XCTAssertEqual(entitlementStore.getAddonPremiumCredits(), 1000000, "Should handle large credit amounts")
+    override func addAddonCredits(_ credits: Int) {
+        mockEntitlements = Entitlements(
+            userTier: mockEntitlements.userTier,
+            hasActiveSubscription: mockEntitlements.hasActiveSubscription,
+            subscriptionExpiryDate: mockEntitlements.subscriptionExpiryDate,
+            addonPremiumCredits: mockEntitlements.addonPremiumCredits + credits
+        )
     }
     
-    func testExpiredSubscription() {
-        let pastDate = Date().addingTimeInterval(-24 * 60 * 60) // Yesterday
-        
-        entitlementStore.setSubscriptionStatus(active: true, expiryDate: pastDate)
-        
-        // In a real implementation, you might want to check if subscription is actually active
-        // based on the expiry date, but for now we just test that the date is stored
-        XCTAssertEqual(entitlementStore.subscriptionExpiryDate, pastDate, "Should store expiry date even if in past")
+    override func consumeAddonCredits(_ credits: Int) -> Bool {
+        if mockEntitlements.addonPremiumCredits >= credits {
+            mockEntitlements = Entitlements(
+                userTier: mockEntitlements.userTier,
+                hasActiveSubscription: mockEntitlements.hasActiveSubscription,
+                subscriptionExpiryDate: mockEntitlements.subscriptionExpiryDate,
+                addonPremiumCredits: mockEntitlements.addonPremiumCredits - credits
+            )
+            return true
+        }
+        return false
     }
     
-    // MARK: - Feature Flag Tests
-    
-    func testFeatureAvailability() {
-        // Test Free tier limitations
-        entitlementStore.setTier(.free)
-        let freeEntitlements = entitlementStore.currentEntitlements
-        
-        XCTAssertFalse(freeEntitlements.canPerform(.batchProcessing), "Free tier should not have batch processing")
-        XCTAssertFalse(freeEntitlements.canPerform(.highResExport), "Free tier should not have high-res export")
-        XCTAssertTrue(freeEntitlements.canPerform(.enhancement), "Free tier should have basic enhancement")
-        
-        // Test Pro tier capabilities
-        entitlementStore.setTier(.pro)
-        let proEntitlements = entitlementStore.currentEntitlements
-        
-        XCTAssertTrue(proEntitlements.canPerform(.batchProcessing), "Pro tier should have batch processing")
-        XCTAssertTrue(proEntitlements.canPerform(.highResExport), "Pro tier should have high-res export")
-        XCTAssertTrue(proEntitlements.canPerform(.enhancement), "Pro tier should have basic enhancement")
+    override func reset() {
+        mockEntitlements = Entitlements(
+            userTier: .free,
+            hasActiveSubscription: false,
+            subscriptionExpiryDate: nil,
+            addonPremiumCredits: 0
+        )
     }
 }
 

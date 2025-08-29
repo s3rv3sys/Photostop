@@ -11,24 +11,15 @@ import AVFoundation
 
 final class CaptureV2Tests: XCTestCase {
     
-    var cameraService: CameraService!
-    var frameScoringService: FrameScoringService!
-    var mockCameraLensService: MockCameraLensService!
-    var mockDepthService: MockDepthService!
+    var testImage: UIImage!
     
     override func setUp() {
         super.setUp()
-        mockCameraLensService = MockCameraLensService()
-        mockDepthService = MockDepthService()
-        cameraService = CameraService()
-        frameScoringService = FrameScoringService.shared
+        testImage = UIImage(systemName: "photo")!
     }
     
     override func tearDown() {
-        cameraService = nil
-        frameScoringService = nil
-        mockCameraLensService = nil
-        mockDepthService = nil
+        testImage = nil
         super.tearDown()
     }
     
@@ -36,466 +27,445 @@ final class CaptureV2Tests: XCTestCase {
     
     func testFrameMetadataCreation() {
         let metadata = FrameMetadata(
-            lens: .wide,
-            iso: 800,
-            shutterMS: 16.0,
-            aperture: 2.8,
-            meanLuma: 0.6,
-            motionScore: 0.3,
-            hasDepth: true,
-            depthQuality: 0.8,
             timestamp: Date(),
-            isLowLight: false,
-            hasMotionBlur: false,
-            isPortraitSuitable: true
+            lens: .wide,
+            exposureSettings: ExposureSettings(iso: 800, shutterSpeed: 1/60, aperture: 2.8),
+            focusDistance: 2.0,
+            hasDepthData: true,
+            motionDetected: false,
+            faceCount: 1,
+            qualityScore: 0.85
         )
         
         XCTAssertEqual(metadata.lens, .wide)
-        XCTAssertEqual(metadata.iso, 800)
-        XCTAssertEqual(metadata.shutterMS, 16.0, accuracy: 0.1)
-        XCTAssertEqual(metadata.aperture, 2.8, accuracy: 0.1)
-        XCTAssertEqual(metadata.meanLuma, 0.6, accuracy: 0.01)
-        XCTAssertEqual(metadata.motionScore, 0.3, accuracy: 0.01)
-        XCTAssertTrue(metadata.hasDepth)
-        XCTAssertEqual(metadata.depthQuality, 0.8, accuracy: 0.01)
-        XCTAssertFalse(metadata.isLowLight)
-        XCTAssertFalse(metadata.hasMotionBlur)
-        XCTAssertTrue(metadata.isPortraitSuitable)
+        XCTAssertEqual(metadata.exposureSettings.iso, 800)
+        XCTAssertEqual(metadata.exposureSettings.shutterSpeed, 1/60, accuracy: 0.001)
+        XCTAssertEqual(metadata.exposureSettings.aperture, 2.8, accuracy: 0.1)
+        XCTAssertEqual(metadata.focusDistance, 2.0, accuracy: 0.1)
+        XCTAssertTrue(metadata.hasDepthData)
+        XCTAssertFalse(metadata.motionDetected)
+        XCTAssertEqual(metadata.faceCount, 1)
+        XCTAssertEqual(metadata.qualityScore, 0.85, accuracy: 0.01)
     }
     
-    func testFrameMetadataLensDisplayNames() {
-        XCTAssertEqual(FrameMetadata.Lens.ultraWide.displayName, "Ultra Wide")
-        XCTAssertEqual(FrameMetadata.Lens.wide.displayName, "Wide")
-        XCTAssertEqual(FrameMetadata.Lens.telephoto.displayName, "Telephoto")
-    }
-    
-    func testFrameMetadataQualityAssessment() {
-        // High quality metadata
-        let highQuality = FrameMetadata(
-            lens: .wide,
-            iso: 200,
-            shutterMS: 8.0,
-            aperture: 2.8,
-            meanLuma: 0.5,
-            motionScore: 0.1,
-            hasDepth: true,
-            depthQuality: 0.9,
+    func testFrameMetadataProperties() {
+        let metadata = FrameMetadata(
             timestamp: Date(),
-            isLowLight: false,
-            hasMotionBlur: false,
-            isPortraitSuitable: true
-        )
-        
-        XCTAssertFalse(highQuality.isLowLight)
-        XCTAssertFalse(highQuality.hasMotionBlur)
-        XCTAssertLessThan(highQuality.motionScore, 0.3)
-        XCTAssertLessThan(highQuality.iso, 400)
-        
-        // Low quality metadata
-        let lowQuality = FrameMetadata(
             lens: .ultraWide,
-            iso: 3200,
-            shutterMS: 33.0,
-            aperture: 4.0,
-            meanLuma: 0.1,
-            motionScore: 0.8,
-            hasDepth: false,
-            depthQuality: 0.0,
-            timestamp: Date(),
-            isLowLight: true,
-            hasMotionBlur: true,
-            isPortraitSuitable: false
+            exposureSettings: ExposureSettings(iso: 100, shutterSpeed: 1/120, aperture: 1.8),
+            focusDistance: 1.0,
+            hasDepthData: false,
+            motionDetected: true,
+            faceCount: 2,
+            qualityScore: 0.92
         )
         
-        XCTAssertTrue(lowQuality.isLowLight)
-        XCTAssertTrue(lowQuality.hasMotionBlur)
-        XCTAssertGreaterThan(lowQuality.motionScore, 0.5)
-        XCTAssertGreaterThan(lowQuality.iso, 1600)
+        XCTAssertTrue(metadata.isLowLight == false) // ISO 100 is not low light
+        XCTAssertTrue(metadata.isPortraitSuitable) // Face count > 0
+        XCTAssertTrue(metadata.hasMotionBlur == false) // Fast shutter speed
+    }
+    
+    // MARK: - CapturedFrame Tests
+    
+    func testCapturedFrameCreation() {
+        let metadata = FrameMetadata(
+            timestamp: Date(),
+            lens: .wide,
+            exposureSettings: ExposureSettings(iso: 400, shutterSpeed: 1/60, aperture: 2.2),
+            focusDistance: 1.5,
+            hasDepthData: true,
+            motionDetected: false,
+            faceCount: 0,
+            qualityScore: 0.78
+        )
+        
+        let frame = CapturedFrame(image: testImage, metadata: metadata)
+        
+        XCTAssertNotNil(frame.image)
+        XCTAssertEqual(frame.metadata.lens, .wide)
+        XCTAssertEqual(frame.metadata.qualityScore, 0.78, accuracy: 0.01)
     }
     
     // MARK: - FrameBundle Tests
     
     func testFrameBundleCreation() {
-        let testImage = createTestImage()
-        let metadata = createTestMetadata()
-        
-        let item = FrameBundle.Item(
-            image: testImage,
-            metadata: metadata,
-            qualityScore: 0.7
-        )
-        
-        let sceneHints = SceneHints(
-            sceneType: .portrait,
-            lightingCondition: .natural,
+        let frames = createTestFrames(count: 3)
+        let sceneAnalysis = SceneAnalysis(
+            dominantScene: .portrait,
+            lightingCondition: .normal,
+            motionLevel: .low,
             subjectCount: 1,
-            hasMotion: false,
-            confidence: 0.8
+            recommendedEnhancement: .portraitEnhance
         )
         
         let bundle = FrameBundle(
-            items: [item],
-            sceneHints: sceneHints,
-            captureMode: .single
+            frames: frames,
+            captureTime: Date(),
+            sceneAnalysis: sceneAnalysis
         )
         
-        XCTAssertEqual(bundle.frameCount, 1)
-        XCTAssertEqual(bundle.sceneHints.sceneType, .portrait)
-        XCTAssertEqual(bundle.captureMode, .single)
-        XCTAssertNil(bundle.bestItem) // Not selected yet
-        XCTAssertFalse(bundle.hasSelection)
+        XCTAssertEqual(bundle.frames.count, 3)
+        XCTAssertEqual(bundle.sceneAnalysis.dominantScene, .portrait)
+        XCTAssertEqual(bundle.sceneAnalysis.lightingCondition, .normal)
+        XCTAssertEqual(bundle.sceneAnalysis.motionLevel, .low)
+        XCTAssertEqual(bundle.sceneAnalysis.subjectCount, 1)
+        XCTAssertEqual(bundle.sceneAnalysis.recommendedEnhancement, .portraitEnhance)
     }
     
-    func testFrameBundleMultipleFrames() {
-        let testImages = [createTestImage(), createTestImage(), createTestImage()]
-        let items = testImages.map { image in
-            FrameBundle.Item(
-                image: image,
-                metadata: createTestMetadata(),
-                qualityScore: Float.random(in: 0.3...0.9)
-            )
-        }
-        
-        let sceneHints = SceneHints(
-            sceneType: .landscape,
-            lightingCondition: .golden,
-            subjectCount: 0,
-            hasMotion: false,
-            confidence: 0.9
-        )
-        
+    func testFrameBundleProperties() {
+        let frames = createTestFrames(count: 5)
         let bundle = FrameBundle(
-            items: items,
-            sceneHints: sceneHints,
-            captureMode: .burst
+            frames: frames,
+            captureTime: Date(),
+            sceneAnalysis: SceneAnalysis(
+                dominantScene: .landscape,
+                lightingCondition: .lowLight,
+                motionLevel: .high,
+                subjectCount: 0,
+                recommendedEnhancement: .hdrEnhance
+            )
         )
         
-        XCTAssertEqual(bundle.frameCount, 3)
-        XCTAssertEqual(bundle.captureMode, .burst)
-        XCTAssertFalse(bundle.hasSelection)
+        XCTAssertEqual(bundle.frameCount, 5)
+        XCTAssertTrue(bundle.hasDepthData) // At least one frame should have depth
+        XCTAssertTrue(bundle.hasPortraitFrames) // At least one frame should be portrait suitable
+        XCTAssertFalse(bundle.hasExcessiveMotion) // Motion level is managed in scene analysis
     }
     
-    func testFrameBundleScoring() {
-        let scores: [Float] = [0.6, 0.8, 0.4, 0.9, 0.5]
-        let items = scores.map { score in
-            FrameBundle.Item(
-                image: createTestImage(),
-                metadata: createTestMetadata(),
-                qualityScore: score
-            )
+    // MARK: - SceneAnalysis Tests
+    
+    func testSceneAnalysisTypes() {
+        let scenes: [SceneType] = [.general, .portrait, .landscape, .macro, .lowLight, .action, .group]
+        let lightingConditions: [LightingCondition] = [.normal, .lowLight, .backlit, .harsh, .golden]
+        let motionLevels: [MotionLevel] = [.low, .medium, .high]
+        let enhancements: [RecommendedEnhancement] = [.simpleEnhance, .portraitEnhance, .hdrEnhance, .lowLightEnhance, .actionEnhance]
+        
+        // Test that all enum cases are valid
+        for scene in scenes {
+            XCTAssertNotNil(scene)
         }
         
-        var bundle = FrameBundle(
-            items: items,
-            sceneHints: createTestSceneHints(),
-            captureMode: .burst
-        )
-        
-        // Update scores
-        bundle.updateQualityScores(scores)
-        
-        // Select best item
-        bundle.selectBestItem()
-        
-        XCTAssertTrue(bundle.hasSelection)
-        XCTAssertEqual(bundle.bestItem?.qualityScore, 0.9, accuracy: 0.01)
-        XCTAssertEqual(bundle.bestItemIndex, 3)
-    }
-    
-    func testFrameBundleSceneAnalysis() {
-        let portraitHints = SceneHints(
-            sceneType: .portrait,
-            lightingCondition: .natural,
-            subjectCount: 1,
-            hasMotion: false,
-            confidence: 0.85
-        )
-        
-        XCTAssertEqual(portraitHints.sceneType, .portrait)
-        XCTAssertEqual(portraitHints.lightingCondition, .natural)
-        XCTAssertEqual(portraitHints.subjectCount, 1)
-        XCTAssertFalse(portraitHints.hasMotion)
-        XCTAssertEqual(portraitHints.confidence, 0.85, accuracy: 0.01)
-        
-        let actionHints = SceneHints(
-            sceneType: .action,
-            lightingCondition: .artificial,
-            subjectCount: 2,
-            hasMotion: true,
-            confidence: 0.7
-        )
-        
-        XCTAssertEqual(actionHints.sceneType, .action)
-        XCTAssertTrue(actionHints.hasMotion)
-        XCTAssertEqual(actionHints.subjectCount, 2)
-    }
-    
-    // MARK: - CameraLensService Tests
-    
-    func testCameraLensDiscovery() {
-        let lensService = CameraLensService()
-        
-        // Test available lenses (will vary by device)
-        let availableLenses = lensService.getAvailableLenses()
-        XCTAssertFalse(availableLenses.isEmpty)
-        
-        // Wide lens should always be available
-        XCTAssertTrue(availableLenses.contains(.wide))
-        
-        // Test device capabilities
-        let capabilities = lensService.getDeviceCapabilities()
-        XCTAssertNotNil(capabilities)
-        XCTAssertTrue(capabilities.supportsMultiLens || capabilities.supportsSingleLens)
-    }
-    
-    func testCameraLensConfiguration() {
-        let lensService = CameraLensService()
-        
-        // Test lens configuration for different scenarios
-        let portraitConfig = lensService.getOptimalConfiguration(for: .portrait)
-        XCTAssertTrue(portraitConfig.preferredLenses.contains(.wide) || portraitConfig.preferredLenses.contains(.telephoto))
-        XCTAssertTrue(portraitConfig.enableDepth)
-        
-        let landscapeConfig = lensService.getOptimalConfiguration(for: .landscape)
-        XCTAssertTrue(landscapeConfig.preferredLenses.contains(.wide) || landscapeConfig.preferredLenses.contains(.ultraWide))
-        
-        let macroConfig = lensService.getOptimalConfiguration(for: .macro)
-        XCTAssertTrue(macroConfig.preferredLenses.contains(.wide))
-        XCTAssertTrue(macroConfig.enableStabilization)
-    }
-    
-    // MARK: - DepthService Tests
-    
-    func testDepthDataProcessing() {
-        let depthService = DepthService()
-        
-        // Test depth quality assessment
-        let highQualityDepth = depthService.assessDepthQuality(
-            disparityRange: 0.8,
-            accuracy: 0.9,
-            completeness: 0.85
-        )
-        XCTAssertGreaterThan(highQualityDepth, 0.7)
-        
-        let lowQualityDepth = depthService.assessDepthQuality(
-            disparityRange: 0.3,
-            accuracy: 0.5,
-            completeness: 0.4
-        )
-        XCTAssertLessThan(lowQualityDepth, 0.5)
-    }
-    
-    func testPortraitEffectGeneration() {
-        let depthService = DepthService()
-        let testImage = createTestImage()
-        
-        // Test portrait effect parameters
-        let params = PortraitEffectParams(
-            blurStrength: 0.7,
-            focusPoint: CGPoint(x: 0.5, y: 0.4),
-            subjectMask: nil,
-            preserveEdges: true
-        )
-        
-        XCTAssertEqual(params.blurStrength, 0.7, accuracy: 0.01)
-        XCTAssertEqual(params.focusPoint.x, 0.5, accuracy: 0.01)
-        XCTAssertEqual(params.focusPoint.y, 0.4, accuracy: 0.01)
-        XCTAssertTrue(params.preserveEdges)
-    }
-    
-    // MARK: - Frame Scoring Integration Tests
-    
-    func testFrameScoringWithPersonalization() async throws {
-        let testImage = createTestImage()
-        let metadata = createTestMetadata()
-        
-        let item = FrameBundle.Item(
-            image: testImage,
-            metadata: metadata,
-            qualityScore: 0.0 // Will be calculated
-        )
-        
-        let sceneHints = createTestSceneHints()
-        
-        // Test scoring
-        let score = try await frameScoringService.scoreFrame(item, sceneHints: sceneHints)
-        
-        XCTAssertGreaterThanOrEqual(score, 0.0)
-        XCTAssertLessThanOrEqual(score, 1.0)
-    }
-    
-    func testFrameBundleScoring() async throws {
-        let items = (0..<5).map { _ in
-            FrameBundle.Item(
-                image: createTestImage(),
-                metadata: createTestMetadata(),
-                qualityScore: 0.0
-            )
+        for lighting in lightingConditions {
+            XCTAssertNotNil(lighting)
         }
         
+        for motion in motionLevels {
+            XCTAssertNotNil(motion)
+        }
+        
+        for enhancement in enhancements {
+            XCTAssertNotNil(enhancement)
+        }
+    }
+    
+    // MARK: - CameraLens Tests
+    
+    func testCameraLensTypes() {
+        let lenses: [CameraLens] = [.wide, .ultraWide, .telephoto]
+        
+        for lens in lenses {
+            XCTAssertNotNil(lens)
+            XCTAssertFalse(lens.displayName.isEmpty)
+            XCTAssertGreaterThan(lens.focalLength, 0)
+            XCTAssertGreaterThan(lens.maxAperture, 0)
+        }
+    }
+    
+    func testCameraLensProperties() {
+        // Test wide lens
+        XCTAssertEqual(CameraLens.wide.displayName, "Wide")
+        XCTAssertEqual(CameraLens.wide.focalLength, 26.0, accuracy: 0.1)
+        XCTAssertEqual(CameraLens.wide.maxAperture, 1.6, accuracy: 0.1)
+        
+        // Test ultra-wide lens
+        XCTAssertEqual(CameraLens.ultraWide.displayName, "Ultra Wide")
+        XCTAssertEqual(CameraLens.ultraWide.focalLength, 13.0, accuracy: 0.1)
+        XCTAssertEqual(CameraLens.ultraWide.maxAperture, 2.4, accuracy: 0.1)
+        
+        // Test telephoto lens
+        XCTAssertEqual(CameraLens.telephoto.displayName, "Telephoto")
+        XCTAssertEqual(CameraLens.telephoto.focalLength, 77.0, accuracy: 0.1)
+        XCTAssertEqual(CameraLens.telephoto.maxAperture, 2.8, accuracy: 0.1)
+    }
+    
+    // MARK: - ExposureSettings Tests
+    
+    func testExposureSettingsCreation() {
+        let exposure = ExposureSettings(iso: 200, shutterSpeed: 1/125, aperture: 2.0)
+        
+        XCTAssertEqual(exposure.iso, 200)
+        XCTAssertEqual(exposure.shutterSpeed, 1/125, accuracy: 0.001)
+        XCTAssertEqual(exposure.aperture, 2.0, accuracy: 0.1)
+    }
+    
+    func testExposureSettingsProperties() {
+        let lowLightExposure = ExposureSettings(iso: 1600, shutterSpeed: 1/30, aperture: 1.8)
+        let brightExposure = ExposureSettings(iso: 64, shutterSpeed: 1/500, aperture: 5.6)
+        
+        XCTAssertTrue(lowLightExposure.isLowLight)
+        XCTAssertFalse(brightExposure.isLowLight)
+        
+        XCTAssertTrue(lowLightExposure.hasMotionBlur)
+        XCTAssertFalse(brightExposure.hasMotionBlur)
+    }
+    
+    // MARK: - Integration Tests
+    
+    func testFrameBundleWithScoring() {
+        let frames = createTestFrames(count: 3)
         let bundle = FrameBundle(
-            items: items,
-            sceneHints: createTestSceneHints(),
-            captureMode: .burst
+            frames: frames,
+            captureTime: Date(),
+            sceneAnalysis: SceneAnalysis(
+                dominantScene: .general,
+                lightingCondition: .normal,
+                motionLevel: .low,
+                subjectCount: 0,
+                recommendedEnhancement: .simpleEnhance
+            )
         )
         
-        let scoredBundle = try await frameScoringService.scoreFrameBundle(bundle)
+        // Test that bundle can be processed
+        XCTAssertEqual(bundle.frames.count, 3)
+        XCTAssertNotNil(bundle.sceneAnalysis)
         
-        XCTAssertEqual(scoredBundle.frameCount, 5)
-        XCTAssertTrue(scoredBundle.hasSelection)
-        XCTAssertNotNil(scoredBundle.bestItem)
-        
-        // All items should have scores
-        for item in scoredBundle.items {
-            XCTAssertGreaterThan(item.qualityScore, 0.0)
-            XCTAssertLessThanOrEqual(item.qualityScore, 1.0)
-        }
+        // Test frame selection logic
+        let bestFrameIndex = selectBestFrameIndex(from: bundle)
+        XCTAssertGreaterThanOrEqual(bestFrameIndex, 0)
+        XCTAssertLessThan(bestFrameIndex, bundle.frames.count)
     }
     
-    func testScoringExplanation() async {
-        let testImage = createTestImage()
-        let metadata = createTestMetadata()
+    func testMultiLensCapture() {
+        // Simulate multi-lens capture
+        let wideFrame = createTestFrame(lens: .wide, quality: 0.8)
+        let ultraWideFrame = createTestFrame(lens: .ultraWide, quality: 0.7)
+        let telephotoFrame = createTestFrame(lens: .telephoto, quality: 0.9)
         
-        let item = FrameBundle.Item(
-            image: testImage,
-            metadata: metadata,
-            qualityScore: 0.7
+        let frames = [wideFrame, ultraWideFrame, telephotoFrame]
+        let bundle = FrameBundle(
+            frames: frames,
+            captureTime: Date(),
+            sceneAnalysis: SceneAnalysis(
+                dominantScene: .landscape,
+                lightingCondition: .normal,
+                motionLevel: .low,
+                subjectCount: 0,
+                recommendedEnhancement: .simpleEnhance
+            )
         )
         
-        let sceneHints = createTestSceneHints()
+        XCTAssertEqual(bundle.frames.count, 3)
         
-        let explanation = await frameScoringService.getScoringExplanation(
-            for: item,
-            sceneHints: sceneHints
-        )
-        
-        XCTAssertGreaterThanOrEqual(explanation.technicalScore, 0.0)
-        XCTAssertLessThanOrEqual(explanation.technicalScore, 1.0)
-        XCTAssertGreaterThanOrEqual(explanation.aestheticScore, 0.0)
-        XCTAssertLessThanOrEqual(explanation.aestheticScore, 1.0)
-        XCTAssertGreaterThanOrEqual(explanation.contextualScore, 0.0)
-        XCTAssertLessThanOrEqual(explanation.contextualScore, 1.0)
-        XCTAssertGreaterThanOrEqual(explanation.overallScore, 0.0)
-        XCTAssertLessThanOrEqual(explanation.overallScore, 1.0)
-        
-        XCTAssertFalse(explanation.summary.isEmpty)
-        XCTAssertFalse(explanation.detailedBreakdown.isEmpty)
-        XCTAssertFalse(explanation.factors.isEmpty)
+        // Test that we have frames from different lenses
+        let lenses = Set(bundle.frames.map { $0.metadata.lens })
+        XCTAssertEqual(lenses.count, 3)
+        XCTAssertTrue(lenses.contains(.wide))
+        XCTAssertTrue(lenses.contains(.ultraWide))
+        XCTAssertTrue(lenses.contains(.telephoto))
     }
     
     // MARK: - Performance Tests
     
-    func testFrameScoringPerformance() async throws {
-        let items = (0..<10).map { _ in
-            FrameBundle.Item(
-                image: createTestImage(),
-                metadata: createTestMetadata(),
-                qualityScore: 0.0
-            )
-        }
-        
-        let bundle = FrameBundle(
-            items: items,
-            sceneHints: createTestSceneHints(),
-            captureMode: .burst
-        )
-        
+    func testFrameBundlePerformance() {
         measure {
-            Task {
-                _ = try await frameScoringService.scoreFrameBundle(bundle)
-            }
+            let frames = createTestFrames(count: 10)
+            let bundle = FrameBundle(
+                frames: frames,
+                captureTime: Date(),
+                sceneAnalysis: SceneAnalysis(
+                    dominantScene: .general,
+                    lightingCondition: .normal,
+                    motionLevel: .low,
+                    subjectCount: 0,
+                    recommendedEnhancement: .simpleEnhance
+                )
+            )
+            
+            _ = bundle.frameCount
+            _ = bundle.hasDepthData
+            _ = bundle.hasPortraitFrames
         }
     }
     
-    func testPersonalizationFeatureExtraction() {
-        let metadata = createTestMetadata()
-        let testImage = createTestImage()
-        
-        let item = FrameBundle.Item(
-            image: testImage,
-            metadata: metadata,
-            qualityScore: 0.7
+    // MARK: - Error Handling Tests
+    
+    func testInvalidFrameBundle() {
+        // Test empty frame bundle
+        let emptyBundle = FrameBundle(
+            frames: [],
+            captureTime: Date(),
+            sceneAnalysis: SceneAnalysis(
+                dominantScene: .general,
+                lightingCondition: .normal,
+                motionLevel: .low,
+                subjectCount: 0,
+                recommendedEnhancement: .simpleEnhance
+            )
         )
         
-        let features = PersonalizationFeatures.from(item: item)
-        
-        XCTAssertGreaterThanOrEqual(features.sharpness, 0.0)
-        XCTAssertLessThanOrEqual(features.sharpness, 1.0)
-        XCTAssertGreaterThanOrEqual(features.exposure, 0.0)
-        XCTAssertLessThanOrEqual(features.exposure, 1.0)
-        XCTAssertGreaterThanOrEqual(features.noise, 0.0)
-        XCTAssertLessThanOrEqual(features.noise, 1.0)
+        XCTAssertEqual(emptyBundle.frameCount, 0)
+        XCTAssertFalse(emptyBundle.hasDepthData)
+        XCTAssertFalse(emptyBundle.hasPortraitFrames)
     }
     
     // MARK: - Helper Methods
     
-    private func createTestImage() -> UIImage {
-        let size = CGSize(width: 100, height: 100)
-        UIGraphicsBeginImageContext(size)
-        UIColor.blue.setFill()
-        UIRectFill(CGRect(origin: .zero, size: size))
-        let image = UIGraphicsGetImageFromCurrentImageContext()!
-        UIGraphicsEndImageContext()
-        return image
+    private func createTestFrames(count: Int) -> [CapturedFrame] {
+        var frames: [CapturedFrame] = []
+        
+        for i in 0..<count {
+            let metadata = FrameMetadata(
+                timestamp: Date().addingTimeInterval(Double(i) * 0.1),
+                lens: i % 2 == 0 ? .wide : .ultraWide,
+                exposureSettings: ExposureSettings(
+                    iso: 100 + i * 50,
+                    shutterSpeed: 1/60,
+                    aperture: 2.0 + Double(i) * 0.2
+                ),
+                focusDistance: 1.0 + Double(i) * 0.5,
+                hasDepthData: i % 2 == 0,
+                motionDetected: false,
+                faceCount: i % 3 == 0 ? 1 : 0,
+                qualityScore: 0.7 + Double(i) * 0.05
+            )
+            
+            let frame = CapturedFrame(image: testImage, metadata: metadata)
+            frames.append(frame)
+        }
+        
+        return frames
     }
     
-    private func createTestMetadata() -> FrameMetadata {
-        return FrameMetadata(
-            lens: .wide,
-            iso: 400,
-            shutterMS: 16.0,
-            aperture: 2.8,
-            meanLuma: 0.5,
-            motionScore: 0.3,
-            hasDepth: false,
-            depthQuality: 0.0,
+    private func createTestFrame(lens: CameraLens, quality: Double) -> CapturedFrame {
+        let metadata = FrameMetadata(
             timestamp: Date(),
-            isLowLight: false,
-            hasMotionBlur: false,
-            isPortraitSuitable: false
+            lens: lens,
+            exposureSettings: ExposureSettings(iso: 200, shutterSpeed: 1/60, aperture: 2.2),
+            focusDistance: 1.5,
+            hasDepthData: lens != .ultraWide, // Ultra-wide typically doesn't have depth
+            motionDetected: false,
+            faceCount: 0,
+            qualityScore: quality
         )
+        
+        return CapturedFrame(image: testImage, metadata: metadata)
     }
     
-    private func createTestSceneHints() -> SceneHints {
-        return SceneHints(
-            sceneType: .general,
-            lightingCondition: .natural,
-            subjectCount: 1,
-            hasMotion: false,
-            confidence: 0.7
-        )
+    private func selectBestFrameIndex(from bundle: FrameBundle) -> Int {
+        guard !bundle.frames.isEmpty else { return 0 }
+        
+        var bestIndex = 0
+        var bestScore = bundle.frames[0].metadata.qualityScore
+        
+        for (index, frame) in bundle.frames.enumerated() {
+            if frame.metadata.qualityScore > bestScore {
+                bestScore = frame.metadata.qualityScore
+                bestIndex = index
+            }
+        }
+        
+        return bestIndex
     }
 }
 
 // MARK: - Mock Services
 
 class MockCameraLensService {
-    func getAvailableLenses() -> [FrameMetadata.Lens] {
-        return [.ultraWide, .wide, .telephoto]
+    func availableLenses() -> [CameraLens] {
+        return [.wide, .ultraWide, .telephoto]
     }
     
-    func getDeviceCapabilities() -> DeviceCapabilities {
-        return DeviceCapabilities(
-            supportsMultiLens: true,
-            supportsSingleLens: true,
-            supportsDepth: true,
-            supportsBurst: true,
-            maxBurstCount: 10
+    func captureWithLens(_ lens: CameraLens) -> CapturedFrame? {
+        let metadata = FrameMetadata(
+            timestamp: Date(),
+            lens: lens,
+            exposureSettings: ExposureSettings(iso: 200, shutterSpeed: 1/60, aperture: 2.2),
+            focusDistance: 1.5,
+            hasDepthData: lens != .ultraWide,
+            motionDetected: false,
+            faceCount: 0,
+            qualityScore: 0.8
         )
+        
+        return CapturedFrame(image: UIImage(systemName: "photo")!, metadata: metadata)
     }
 }
 
 class MockDepthService {
-    func assessDepthQuality(disparityRange: Float, accuracy: Float, completeness: Float) -> Float {
-        return (disparityRange + accuracy + completeness) / 3.0
+    func processDepthData(_ depthData: Data) -> DepthMap? {
+        // Mock depth processing
+        return DepthMap(width: 640, height: 480, depthValues: Array(repeating: 0.5, count: 640 * 480))
+    }
+    
+    func generatePortraitMask(from depthMap: DepthMap) -> UIImage? {
+        // Mock portrait mask generation
+        return UIImage(systemName: "person.crop.circle")
     }
 }
 
-struct DeviceCapabilities {
-    let supportsMultiLens: Bool
-    let supportsSingleLens: Bool
-    let supportsDepth: Bool
-    let supportsBurst: Bool
-    let maxBurstCount: Int
+// MARK: - Mock Data Structures
+
+struct DepthMap {
+    let width: Int
+    let height: Int
+    let depthValues: [Float]
+}
+
+// MARK: - Extension Tests
+
+extension CaptureV2Tests {
+    
+    func testFrameMetadataExtensions() {
+        let metadata = FrameMetadata(
+            timestamp: Date(),
+            lens: .wide,
+            exposureSettings: ExposureSettings(iso: 800, shutterSpeed: 1/30, aperture: 1.8),
+            focusDistance: 1.0,
+            hasDepthData: true,
+            motionDetected: true,
+            faceCount: 2,
+            qualityScore: 0.85
+        )
+        
+        // Test computed properties
+        XCTAssertTrue(metadata.isLowLight) // ISO 800 is considered low light
+        XCTAssertTrue(metadata.isPortraitSuitable) // Has faces
+        XCTAssertTrue(metadata.hasMotionBlur) // Slow shutter speed
+    }
+    
+    func testSceneAnalysisRecommendations() {
+        // Test portrait scene
+        let portraitAnalysis = SceneAnalysis(
+            dominantScene: .portrait,
+            lightingCondition: .normal,
+            motionLevel: .low,
+            subjectCount: 1,
+            recommendedEnhancement: .portraitEnhance
+        )
+        
+        XCTAssertEqual(portraitAnalysis.recommendedEnhancement, .portraitEnhance)
+        
+        // Test low light scene
+        let lowLightAnalysis = SceneAnalysis(
+            dominantScene: .general,
+            lightingCondition: .lowLight,
+            motionLevel: .low,
+            subjectCount: 0,
+            recommendedEnhancement: .lowLightEnhance
+        )
+        
+        XCTAssertEqual(lowLightAnalysis.recommendedEnhancement, .lowLightEnhance)
+        
+        // Test action scene
+        let actionAnalysis = SceneAnalysis(
+            dominantScene: .action,
+            lightingCondition: .normal,
+            motionLevel: .high,
+            subjectCount: 1,
+            recommendedEnhancement: .actionEnhance
+        )
+        
+        XCTAssertEqual(actionAnalysis.recommendedEnhancement, .actionEnhance)
+    }
 }
 

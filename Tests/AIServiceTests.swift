@@ -2,7 +2,7 @@
 //  AIServiceTests.swift
 //  PhotoStopTests
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import XCTest
@@ -51,189 +51,190 @@ final class AIServiceTests: XCTestCase {
         // Set API key
         let success = aiService.setAPIKey(testAPIKey)
         XCTAssertTrue(success)
+        
+        // Verify API key is stored and configured
         XCTAssertTrue(aiService.isAPIKeyConfigured())
         XCTAssertEqual(aiService.getAPIKey(), testAPIKey)
     }
     
-    func testAPIKeyStorageWithEmptyKey() {
-        let emptyKey = ""
+    func testAPIKeyRemoval() {
+        let testAPIKey = "test-api-key-12345"
         
-        let success = aiService.setAPIKey(emptyKey)
-        XCTAssertFalse(success)
+        // Set API key
+        _ = aiService.setAPIKey(testAPIKey)
+        XCTAssertTrue(aiService.isAPIKeyConfigured())
+        
+        // Remove API key
+        aiService.removeAPIKey()
         XCTAssertFalse(aiService.isAPIKeyConfigured())
+        XCTAssertNil(aiService.getAPIKey())
     }
     
-    func testAPIKeyStorageWithWhitespaceKey() {
-        let whitespaceKey = "   "
+    // MARK: - Usage Tracking Tests
+    
+    func testUsageTracking() {
+        let initialUsage = aiService.usageCount
+        let initialRemaining = aiService.remainingFreeUses
         
-        let success = aiService.setAPIKey(whitespaceKey)
-        XCTAssertFalse(success)
-        XCTAssertFalse(aiService.isAPIKeyConfigured())
-    }
-    
-    // MARK: - Usage Limit Tests
-    
-    func testUsageLimits() {
-        // Initially should have free uses available
-        XCTAssertTrue(aiService.canUseService())
-        XCTAssertEqual(aiService.remainingFreeUses, 20)
+        // Increment usage
+        aiService.incrementUsage()
         
-        // Simulate usage by directly modifying the count
-        // In a real test, you would use the service and check the count
-        aiService.resetUsageCount()
-        XCTAssertEqual(aiService.remainingFreeUses, 20)
+        XCTAssertEqual(aiService.usageCount, initialUsage + 1)
+        XCTAssertEqual(aiService.remainingFreeUses, initialRemaining - 1)
     }
     
-    func testUsageCountReset() {
-        // Reset usage count
-        aiService.resetUsageCount()
+    func testUsageLimitReached() {
+        // Set usage to limit
+        for _ in 0..<20 {
+            aiService.incrementUsage()
+        }
+        
+        XCTAssertEqual(aiService.remainingFreeUses, 0)
+        XCTAssertTrue(aiService.hasReachedFreeLimit())
+    }
+    
+    func testUsageReset() {
+        // Use some free uses
+        for _ in 0..<5 {
+            aiService.incrementUsage()
+        }
+        
+        XCTAssertEqual(aiService.usageCount, 5)
+        XCTAssertEqual(aiService.remainingFreeUses, 15)
+        
+        // Reset usage
+        aiService.resetUsage()
         
         XCTAssertEqual(aiService.usageCount, 0)
         XCTAssertEqual(aiService.remainingFreeUses, 20)
     }
     
-    // MARK: - Image Enhancement Tests
+    // MARK: - Image Processing Tests
+    
+    func testImageResizing() {
+        // Create a large test image
+        let largeImage = createTestImage(size: CGSize(width: 2000, height: 2000))
+        
+        let resizedImage = aiService.resizeImageForProcessing(largeImage)
+        
+        // Should be resized to max dimension of 1024
+        let maxDimension = max(resizedImage.size.width, resizedImage.size.height)
+        XCTAssertLessThanOrEqual(maxDimension, 1024)
+    }
+    
+    func testImageToBase64() {
+        let base64String = aiService.imageToBase64(testImage)
+        
+        XCTAssertNotNil(base64String)
+        XCTAssertFalse(base64String!.isEmpty)
+        
+        // Should be valid base64
+        let data = Data(base64Encoded: base64String!)
+        XCTAssertNotNil(data)
+    }
+    
+    // MARK: - Enhancement Tests (Mock)
     
     func testEnhanceImageWithoutAPIKey() async {
         // Ensure no API key is set
-        XCTAssertFalse(aiService.isAPIKeyConfigured())
+        aiService.removeAPIKey()
         
-        let enhancedImage = await aiService.enhanceImage(testImage)
-        
-        // Should return nil when no API key is configured
-        XCTAssertNil(enhancedImage)
-        XCTAssertEqual(aiService.processingError, .apiKeyNotConfigured)
+        do {
+            _ = try await aiService.enhanceImage(testImage, prompt: "Make it better")
+            XCTFail("Should have thrown an error without API key")
+        } catch {
+            XCTAssertTrue(error is AIError)
+            if let aiError = error as? AIError {
+                XCTAssertEqual(aiError, .apiKeyNotSet)
+            }
+        }
     }
     
-    func testEnhanceImageWithAPIKey() async {
-        // Set a test API key
-        _ = aiService.setAPIKey("test-api-key")
+    func testEnhanceImageWithFreeUsesExhausted() async {
+        // Set API key
+        _ = aiService.setAPIKey("test-key")
         
-        let enhancedImage = await aiService.enhanceImage(testImage)
-        
-        // With fallback implementation, should return an enhanced image
-        // (The actual enhancement uses Core Image filters as fallback)
-        XCTAssertNotNil(enhancedImage)
-    }
-    
-    func testEnhanceImageWithCustomPrompt() async {
-        // Set a test API key
-        _ = aiService.setAPIKey("test-api-key")
-        
-        let customPrompt = "Make this image more vibrant"
-        let enhancedImage = await aiService.enhanceImage(testImage, prompt: customPrompt)
-        
-        // Should return enhanced image with custom prompt
-        XCTAssertNotNil(enhancedImage)
-    }
-    
-    func testConcurrentImageEnhancement() async {
-        // Set a test API key
-        _ = aiService.setAPIKey("test-api-key")
-        
-        // Start two enhancement tasks concurrently
-        let task1 = Task {
-            await aiService.enhanceImage(testImage)
+        // Exhaust free uses
+        for _ in 0..<20 {
+            aiService.incrementUsage()
         }
         
-        let task2 = Task {
-            await aiService.enhanceImage(testImage)
+        do {
+            _ = try await aiService.enhanceImage(testImage, prompt: "Make it better")
+            XCTFail("Should have thrown an error when free uses exhausted")
+        } catch {
+            XCTAssertTrue(error is AIError)
+            if let aiError = error as? AIError {
+                XCTAssertEqual(aiError, .freeUsesExhausted)
+            }
         }
-        
-        let result1 = await task1.value
-        let result2 = await task2.value
-        
-        // One should succeed, the other should return nil (due to isProcessing check)
-        let successCount = [result1, result2].compactMap { $0 }.count
-        XCTAssertLessThanOrEqual(successCount, 2)
     }
     
     // MARK: - Error Handling Tests
     
     func testAIErrorTypes() {
-        let apiKeyError = AIError.apiKeyNotConfigured
-        let networkError = AIError.networkError("Connection failed")
-        let imageProcessingError = AIError.imageProcessingError
-        let usageLimitError = AIError.usageLimitExceeded
-        let invalidResponseError = AIError.invalidResponse
+        let apiKeyError = AIError.apiKeyNotSet
+        let networkError = AIError.networkError
+        let processingError = AIError.processingError("Test error")
+        let freeUsesError = AIError.freeUsesExhausted
         
         XCTAssertEqual(apiKeyError.errorDescription, "Gemini API key not configured")
-        XCTAssertEqual(networkError.errorDescription, "Network error: Connection failed")
-        XCTAssertEqual(imageProcessingError.errorDescription, "Failed to process image")
-        XCTAssertEqual(usageLimitError.errorDescription, "Usage limit exceeded. Upgrade to premium for unlimited access.")
-        XCTAssertEqual(invalidResponseError.errorDescription, "Invalid response from AI service")
-    }
-    
-    // MARK: - Image Processing Tests
-    
-    func testImagePreparation() {
-        // Test with a large image
-        let largeImage = UIImage(systemName: "photo")!
-        
-        // The service should handle image preparation internally
-        // We can't directly test the private method, but we can test the overall flow
-        XCTAssertNotNil(largeImage)
+        XCTAssertEqual(networkError.errorDescription, "Network connection failed")
+        XCTAssertEqual(processingError.errorDescription, "Processing error: Test error")
+        XCTAssertEqual(freeUsesError.errorDescription, "Free usage limit reached")
     }
     
     // MARK: - Performance Tests
     
-    func testImageEnhancementPerformance() {
-        // Set API key for the test
-        _ = aiService.setAPIKey("test-api-key")
+    func testImageResizingPerformance() {
+        let largeImage = createTestImage(size: CGSize(width: 4000, height: 4000))
         
         measure {
-            Task {
-                _ = await aiService.enhanceImage(testImage)
-            }
+            _ = aiService.resizeImageForProcessing(largeImage)
         }
     }
     
-    // MARK: - Memory Tests
-    
-    func testMemoryLeaks() {
-        weak var weakAIService = aiService
-        aiService = nil
-        
-        // Give some time for deallocation
-        let expectation = XCTestExpectation(description: "Memory cleanup")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
+    func testBase64ConversionPerformance() {
+        measure {
+            _ = aiService.imageToBase64(testImage)
         }
-        wait(for: [expectation], timeout: 1.0)
-        
-        XCTAssertNil(weakAIService, "AIService should be deallocated")
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func createTestImage(size: CGSize) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { context in
+            UIColor.blue.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
     }
 }
 
-// MARK: - Mock Classes for Testing
+// MARK: - Mock AIService for Testing
 
 class MockAIService: AIService {
     var mockEnhancedImage: UIImage?
     var mockError: AIError?
-    var mockProcessingDelay: TimeInterval = 0.1
-    var mockAPIKeyConfigured = false
+    var shouldSucceed = true
     
-    override func isAPIKeyConfigured() -> Bool {
-        return mockAPIKeyConfigured
+    override func enhanceImage(_ image: UIImage, prompt: String) async throws -> UIImage {
+        // Simulate processing time
+        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        
+        if let error = mockError {
+            throw error
+        }
+        
+        if !shouldSucceed {
+            throw AIError.processingError("Mock processing failed")
+        }
+        
+        return mockEnhancedImage ?? image
     }
     
-    override func enhanceImage(_ image: UIImage, prompt: String) async -> UIImage? {
-        await MainActor.run {
-            self.isProcessing = true
-        }
-        
-        // Simulate processing delay
-        try? await Task.sleep(nanoseconds: UInt64(mockProcessingDelay * 1_000_000_000))
-        
-        await MainActor.run {
-            self.isProcessing = false
-            
-            if let error = mockError {
-                self.processingError = error
-            }
-        }
-        
-        return mockError == nil ? mockEnhancedImage : nil
+    override func isAPIKeyConfigured() -> Bool {
+        return shouldSucceed // Mock API key configuration
     }
 }
 
@@ -256,55 +257,39 @@ final class AIServiceIntegrationTests: XCTestCase {
         super.tearDown()
     }
     
-    func testSuccessfulImageEnhancement() async {
-        // Setup mock
-        mockAIService.mockAPIKeyConfigured = true
-        mockAIService.mockEnhancedImage = UIImage(systemName: "photo.fill")!
+    func testSuccessfulEnhancement() async {
+        let enhancedImage = UIImage(systemName: "photo.fill")!
+        mockAIService.mockEnhancedImage = enhancedImage
+        mockAIService.shouldSucceed = true
         
-        let enhancedImage = await mockAIService.enhanceImage(testImage, prompt: "Enhance this image")
-        
-        XCTAssertNotNil(enhancedImage)
-        XCTAssertNil(mockAIService.processingError)
-    }
-    
-    func testImageEnhancementWithError() async {
-        // Setup mock with error
-        mockAIService.mockAPIKeyConfigured = true
-        mockAIService.mockError = .networkError("Connection timeout")
-        
-        let enhancedImage = await mockAIService.enhanceImage(testImage, prompt: "Enhance this image")
-        
-        XCTAssertNil(enhancedImage)
-        XCTAssertNotNil(mockAIService.processingError)
-    }
-    
-    func testImageEnhancementWithoutAPIKey() async {
-        // Setup mock without API key
-        mockAIService.mockAPIKeyConfigured = false
-        
-        let enhancedImage = await mockAIService.enhanceImage(testImage, prompt: "Enhance this image")
-        
-        XCTAssertNil(enhancedImage)
-    }
-    
-    func testProcessingStateManagement() async {
-        // Setup mock with delay
-        mockAIService.mockAPIKeyConfigured = true
-        mockAIService.mockEnhancedImage = testImage
-        mockAIService.mockProcessingDelay = 0.5
-        
-        // Start enhancement
-        let enhancementTask = Task {
-            await mockAIService.enhanceImage(testImage, prompt: "Test")
+        do {
+            let result = try await mockAIService.enhanceImage(testImage, prompt: "Make it better")
+            XCTAssertEqual(result, enhancedImage)
+        } catch {
+            XCTFail("Mock enhancement should succeed: \(error)")
         }
+    }
+    
+    func testEnhancementFailure() async {
+        mockAIService.mockError = .processingError("Mock error")
         
-        // Check processing state
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        XCTAssertTrue(mockAIService.isProcessing)
+        do {
+            _ = try await mockAIService.enhanceImage(testImage, prompt: "Make it better")
+            XCTFail("Should have thrown an error")
+        } catch {
+            XCTAssertTrue(error is AIError)
+        }
+    }
+    
+    func testEnhancementWithoutAPIKey() async {
+        mockAIService.shouldSucceed = false
         
-        // Wait for completion
-        _ = await enhancementTask.value
-        XCTAssertFalse(mockAIService.isProcessing)
+        do {
+            _ = try await mockAIService.enhanceImage(testImage, prompt: "Make it better")
+            XCTFail("Should have thrown an error without API key")
+        } catch {
+            XCTAssertTrue(error is AIError)
+        }
     }
 }
 

@@ -2,11 +2,10 @@
 //  StorageServiceTests.swift
 //  PhotoStopTests
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import XCTest
-import Photos
 @testable import PhotoStop
 
 @MainActor
@@ -46,161 +45,112 @@ final class StorageServiceTests: XCTestCase {
         XCTAssertNil(storageService.saveError)
     }
     
-    // MARK: - Photo Library Permission Tests
-    
-    func testPhotoLibraryPermissionRequest() async {
-        // Note: This test requires photo library permission to be granted
-        // In a real test environment, you would mock PHPhotoLibrary.requestAuthorization
-        
-        let permissionGranted = await storageService.requestPhotoLibraryPermission()
-        
-        // The result depends on the test environment
-        XCTAssertTrue(permissionGranted || !permissionGranted) // Always passes, but tests the flow
-    }
-    
-    // MARK: - Photos Library Save Tests
-    
-    func testSaveToPhotosWithoutPermission() async {
-        // This test assumes no photo library permission is granted
-        // In a real test, you would mock the permission status
-        
-        let success = await storageService.saveToPhotos(testImage)
-        
-        // Result depends on permission status in test environment
-        XCTAssertTrue(success || !success) // Flexible for test environment
-    }
-    
     // MARK: - Local Storage Tests
     
+    func testSaveImageLocally() async {
+        do {
+            let url = try await storageService.saveImageLocally(testImage, filename: "test_image")
+            
+            XCTAssertNotNil(url)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+            
+            // Clean up
+            try? FileManager.default.removeItem(at: url)
+        } catch {
+            XCTFail("Should not throw error: \(error)")
+        }
+    }
+    
     func testSaveEditedImageLocally() async {
-        let success = await storageService.saveEditedImageLocally(testEditedImage)
-        
-        XCTAssertTrue(success)
-        XCTAssertNil(storageService.saveError)
-    }
-    
-    func testLoadEditedImages() async {
-        // First save an image
-        let saveSuccess = await storageService.saveEditedImageLocally(testEditedImage)
-        XCTAssertTrue(saveSuccess)
-        
-        // Then load images
-        let loadedImages = await storageService.loadEditedImages()
-        
-        XCTAssertGreaterThanOrEqual(loadedImages.count, 1)
-        
-        // Find our test image
-        let foundImage = loadedImages.first { $0.id == testEditedImage.id }
-        XCTAssertNotNil(foundImage)
-        XCTAssertEqual(foundImage?.prompt, "Test enhancement")
-        XCTAssertEqual(foundImage?.qualityScore, 0.85)
-    }
-    
-    func testDeleteEditedImage() async {
-        // First save an image
-        let saveSuccess = await storageService.saveEditedImageLocally(testEditedImage)
-        XCTAssertTrue(saveSuccess)
-        
-        // Then delete it
-        let deleteSuccess = await storageService.deleteEditedImage(testEditedImage)
-        XCTAssertTrue(deleteSuccess)
-        
-        // Verify it's deleted
-        let loadedImages = await storageService.loadEditedImages()
-        let foundImage = loadedImages.first { $0.id == testEditedImage.id }
-        XCTAssertNil(foundImage)
-    }
-    
-    func testDeleteNonExistentImage() async {
-        // Try to delete an image that doesn't exist
-        let nonExistentImage = EditedImage(
-            originalImage: testImage,
-            enhancedImage: testImage,
-            prompt: "Non-existent"
-        )
-        
-        let deleteSuccess = await storageService.deleteEditedImage(nonExistentImage)
-        
-        // Should handle gracefully (might return false or true depending on implementation)
-        XCTAssertTrue(deleteSuccess || !deleteSuccess)
-    }
-    
-    // MARK: - Storage Management Tests
-    
-    func testGetStorageUsed() async {
-        // Save a test image first
-        _ = await storageService.saveEditedImageLocally(testEditedImage)
-        
-        let storageUsed = await storageService.getStorageUsed()
-        
-        XCTAssertGreaterThan(storageUsed, 0)
-    }
-    
-    func testGetStorageUsedString() async {
-        let storageString = await storageService.getStorageUsedString()
-        
-        XCTAssertFalse(storageString.isEmpty)
-        XCTAssertTrue(storageString.contains("B") || storageString.contains("KB") || storageString.contains("MB"))
-    }
-    
-    func testCleanupOldImages() async {
-        // Save multiple test images
-        for i in 0..<5 {
-            let testImage = EditedImage(
-                originalImage: self.testImage,
-                enhancedImage: self.testImage,
-                prompt: "Test image \(i)"
-            )
-            _ = await storageService.saveEditedImageLocally(testImage)
+        do {
+            let url = try await storageService.saveEditedImageLocally(testEditedImage)
+            
+            XCTAssertNotNil(url)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+            
+            // Clean up
+            try? FileManager.default.removeItem(at: url)
+        } catch {
+            XCTFail("Should not throw error: \(error)")
         }
-        
-        // Cleanup keeping only 2 images
-        let deletedCount = await storageService.cleanupOldImages(keepCount: 2)
-        
-        XCTAssertGreaterThanOrEqual(deletedCount, 0)
-        
-        // Verify only 2 images remain
-        let remainingImages = await storageService.loadEditedImages()
-        XCTAssertLessThanOrEqual(remainingImages.count, 2)
     }
     
-    // MARK: - Image Export Tests
-    
-    func testExportImage() {
-        let imageData = storageService.exportImage(testImage, quality: 0.8)
-        
-        XCTAssertNotNil(imageData)
-        XCTAssertGreaterThan(imageData?.count ?? 0, 0)
-    }
-    
-    func testExportImageWithDifferentQualities() {
-        let highQualityData = storageService.exportImage(testImage, quality: 0.9)
-        let lowQualityData = storageService.exportImage(testImage, quality: 0.5)
-        
-        XCTAssertNotNil(highQualityData)
-        XCTAssertNotNil(lowQualityData)
-        
-        // High quality should generally produce larger files
-        // (though this might not always be true for simple test images)
-        if let highData = highQualityData, let lowData = lowQualityData {
-            XCTAssertGreaterThanOrEqual(highData.count, lowData.count)
+    func testLoadEditedImagesFromLocal() async {
+        // First save an image
+        do {
+            _ = try await storageService.saveEditedImageLocally(testEditedImage)
+            
+            // Then load all images
+            let loadedImages = await storageService.loadEditedImagesFromLocal()
+            
+            XCTAssertFalse(loadedImages.isEmpty)
+            
+            // Clean up
+            for image in loadedImages {
+                if let url = image.localURL {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+        } catch {
+            XCTFail("Should not throw error: \(error)")
         }
+    }
+    
+    func testDeleteLocalImage() async {
+        // First save an image
+        do {
+            let url = try await storageService.saveImageLocally(testImage, filename: "test_delete")
+            
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+            
+            // Delete the image
+            let success = await storageService.deleteLocalImage(at: url)
+            
+            XCTAssertTrue(success)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        } catch {
+            XCTFail("Should not throw error: \(error)")
+        }
+    }
+    
+    // MARK: - File Management Tests
+    
+    func testDocumentsDirectory() {
+        let documentsURL = storageService.documentsDirectory
+        
+        XCTAssertNotNil(documentsURL)
+        XCTAssertTrue(documentsURL.hasDirectoryPath)
+    }
+    
+    func testPhotoStopDirectory() {
+        let photoStopURL = storageService.photoStopDirectory
+        
+        XCTAssertNotNil(photoStopURL)
+        XCTAssertTrue(photoStopURL.hasDirectoryPath)
+        XCTAssertTrue(photoStopURL.lastPathComponent == "PhotoStop")
+    }
+    
+    func testUniqueFilename() {
+        let filename1 = storageService.uniqueFilename(base: "test", extension: "jpg")
+        let filename2 = storageService.uniqueFilename(base: "test", extension: "jpg")
+        
+        XCTAssertNotEqual(filename1, filename2)
+        XCTAssertTrue(filename1.hasSuffix(".jpg"))
+        XCTAssertTrue(filename2.hasSuffix(".jpg"))
     }
     
     // MARK: - Error Handling Tests
     
     func testStorageErrorTypes() {
         let permissionError = StorageError.permissionDenied
-        let saveError = StorageError.saveError("Test save error")
-        let localSaveError = StorageError.localSaveError("Test local save error")
-        let deleteError = StorageError.deleteError("Test delete error")
-        let loadError = StorageError.loadError("Test load error")
+        let fileError = StorageError.fileNotFound
+        let saveError = StorageError.saveFailed("Test error")
+        let loadError = StorageError.loadFailed("Test error")
         
         XCTAssertEqual(permissionError.errorDescription, "Photo library permission denied")
-        XCTAssertEqual(saveError.errorDescription, "Failed to save to Photos: Test save error")
-        XCTAssertEqual(localSaveError.errorDescription, "Failed to save locally: Test local save error")
-        XCTAssertEqual(deleteError.errorDescription, "Failed to delete: Test delete error")
-        XCTAssertEqual(loadError.errorDescription, "Failed to load: Test load error")
+        XCTAssertEqual(fileError.errorDescription, "File not found")
+        XCTAssertEqual(saveError.errorDescription, "Save failed: Test error")
+        XCTAssertEqual(loadError.errorDescription, "Load failed: Test error")
     }
     
     // MARK: - Performance Tests
@@ -208,27 +158,52 @@ final class StorageServiceTests: XCTestCase {
     func testSavePerformance() {
         measure {
             Task {
-                _ = await storageService.saveEditedImageLocally(testEditedImage)
+                do {
+                    let url = try await storageService.saveImageLocally(testImage, filename: "perf_test")
+                    try? FileManager.default.removeItem(at: url)
+                } catch {
+                    // Expected in performance test
+                }
             }
         }
     }
     
     func testLoadPerformance() {
-        // Save some test data first
-        Task {
-            _ = await storageService.saveEditedImageLocally(testEditedImage)
-        }
-        
         measure {
             Task {
-                _ = await storageService.loadEditedImages()
+                _ = await storageService.loadEditedImagesFromLocal()
             }
         }
     }
     
-    // MARK: - Memory Tests
+    // MARK: - Concurrent Access Tests
     
-    func testMemoryLeaks() {
+    func testConcurrentSave() async {
+        let image1 = testImage
+        let image2 = UIImage(systemName: "photo.fill")!
+        
+        // Save two images concurrently
+        async let save1 = storageService.saveImageLocally(image1, filename: "concurrent1")
+        async let save2 = storageService.saveImageLocally(image2, filename: "concurrent2")
+        
+        do {
+            let (url1, url2) = try await (save1, save2)
+            
+            XCTAssertNotEqual(url1, url2)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url1.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url2.path))
+            
+            // Clean up
+            try? FileManager.default.removeItem(at: url1)
+            try? FileManager.default.removeItem(at: url2)
+        } catch {
+            XCTFail("Concurrent saves should succeed: \(error)")
+        }
+    }
+    
+    // MARK: - Memory Management Tests
+    
+    func testMemoryUsage() {
         weak var weakStorageService = storageService
         storageService = nil
         
@@ -241,96 +216,46 @@ final class StorageServiceTests: XCTestCase {
         
         XCTAssertNil(weakStorageService, "StorageService should be deallocated")
     }
-    
-    // MARK: - Concurrent Access Tests
-    
-    func testConcurrentSaveOperations() async {
-        let image1 = EditedImage(originalImage: testImage, enhancedImage: testImage, prompt: "Concurrent 1")
-        let image2 = EditedImage(originalImage: testImage, enhancedImage: testImage, prompt: "Concurrent 2")
-        let image3 = EditedImage(originalImage: testImage, enhancedImage: testImage, prompt: "Concurrent 3")
-        
-        // Start multiple save operations concurrently
-        async let save1 = storageService.saveEditedImageLocally(image1)
-        async let save2 = storageService.saveEditedImageLocally(image2)
-        async let save3 = storageService.saveEditedImageLocally(image3)
-        
-        let results = await [save1, save2, save3]
-        
-        // All saves should succeed
-        XCTAssertTrue(results.allSatisfy { $0 })
-        
-        // Verify all images were saved
-        let loadedImages = await storageService.loadEditedImages()
-        let savedPrompts = loadedImages.map { $0.prompt }
-        
-        XCTAssertTrue(savedPrompts.contains("Concurrent 1"))
-        XCTAssertTrue(savedPrompts.contains("Concurrent 2"))
-        XCTAssertTrue(savedPrompts.contains("Concurrent 3"))
-    }
 }
 
-// MARK: - Mock Classes for Testing
+// MARK: - Mock Storage Service
 
 class MockStorageService: StorageService {
-    var mockSaveToPhotosSuccess = true
-    var mockSaveLocallySuccess = true
-    var mockDeleteSuccess = true
-    var mockEditedImages: [EditedImage] = []
-    var mockStorageUsed: Int64 = 1024 * 1024 // 1MB
+    var mockSaveSuccess = true
+    var mockLoadedImages: [EditedImage] = []
     var mockError: StorageError?
     
-    override func saveToPhotos(_ image: UIImage) async -> Bool {
-        await MainActor.run {
-            self.isSaving = true
+    override func saveImageLocally(_ image: UIImage, filename: String) async throws -> URL {
+        if let error = mockError {
+            throw error
         }
         
-        // Simulate save delay
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        
-        await MainActor.run {
-            self.isSaving = false
-            if let error = mockError {
-                self.saveError = error
-            }
+        if !mockSaveSuccess {
+            throw StorageError.saveFailed("Mock save failed")
         }
         
-        return mockError == nil ? mockSaveToPhotosSuccess : false
+        // Return a mock URL
+        return documentsDirectory.appendingPathComponent("\(filename).jpg")
     }
     
-    override func saveEditedImageLocally(_ editedImage: EditedImage) async -> Bool {
-        if mockSaveLocallySuccess && mockError == nil {
-            mockEditedImages.append(editedImage)
-            return true
-        } else {
-            await MainActor.run {
-                if let error = mockError {
-                    self.saveError = error
-                }
-            }
-            return false
+    override func saveEditedImageLocally(_ editedImage: EditedImage) async throws -> URL {
+        if let error = mockError {
+            throw error
         }
-    }
-    
-    override func loadEditedImages() async -> [EditedImage] {
-        return mockEditedImages.sorted { $0.timestamp > $1.timestamp }
-    }
-    
-    override func deleteEditedImage(_ editedImage: EditedImage) async -> Bool {
-        if mockDeleteSuccess && mockError == nil {
-            mockEditedImages.removeAll { $0.id == editedImage.id }
-            return true
-        } else {
-            await MainActor.run {
-                if let error = mockError {
-                    self.saveError = error
-                }
-            }
-            return false
+        
+        if !mockSaveSuccess {
+            throw StorageError.saveFailed("Mock save failed")
         }
+        
+        return documentsDirectory.appendingPathComponent("mock_edited.jpg")
     }
     
-    override func getStorageUsed() async -> Int64 {
-        return mockStorageUsed
+    override func loadEditedImagesFromLocal() async -> [EditedImage] {
+        return mockLoadedImages
+    }
+    
+    override func deleteLocalImage(at url: URL) async -> Bool {
+        return mockSaveSuccess
     }
 }
 
@@ -340,56 +265,66 @@ final class StorageServiceIntegrationTests: XCTestCase {
     
     var mockStorageService: MockStorageService!
     var testImage: UIImage!
+    var testEditedImage: EditedImage!
     
     override func setUp() {
         super.setUp()
         mockStorageService = MockStorageService()
         testImage = UIImage(systemName: "photo")!
+        testEditedImage = EditedImage(
+            originalImage: testImage,
+            enhancedImage: testImage,
+            prompt: "Test",
+            qualityScore: 0.8,
+            processingTime: 1.0
+        )
     }
     
     override func tearDown() {
         mockStorageService = nil
         testImage = nil
+        testEditedImage = nil
         super.tearDown()
     }
     
-    func testCompleteWorkflow() async {
-        let editedImage = EditedImage(
-            originalImage: testImage,
-            enhancedImage: testImage,
-            prompt: "Integration test"
-        )
+    func testSuccessfulSave() async {
+        mockStorageService.mockSaveSuccess = true
         
-        // Save locally
-        let saveSuccess = await mockStorageService.saveEditedImageLocally(editedImage)
-        XCTAssertTrue(saveSuccess)
-        
-        // Load and verify
-        let loadedImages = await mockStorageService.loadEditedImages()
-        XCTAssertEqual(loadedImages.count, 1)
-        XCTAssertEqual(loadedImages.first?.prompt, "Integration test")
-        
-        // Delete
-        let deleteSuccess = await mockStorageService.deleteEditedImage(editedImage)
-        XCTAssertTrue(deleteSuccess)
-        
-        // Verify deletion
-        let finalImages = await mockStorageService.loadEditedImages()
-        XCTAssertTrue(finalImages.isEmpty)
+        do {
+            let url = try await mockStorageService.saveImageLocally(testImage, filename: "test")
+            XCTAssertNotNil(url)
+        } catch {
+            XCTFail("Mock save should succeed: \(error)")
+        }
     }
     
-    func testErrorHandling() async {
-        mockStorageService.mockError = .localSaveError("Mock error")
+    func testFailedSave() async {
+        mockStorageService.mockSaveSuccess = false
         
-        let editedImage = EditedImage(
-            originalImage: testImage,
-            enhancedImage: testImage,
-            prompt: "Error test"
-        )
+        do {
+            _ = try await mockStorageService.saveImageLocally(testImage, filename: "test")
+            XCTFail("Should have thrown an error")
+        } catch {
+            XCTAssertTrue(error is StorageError)
+        }
+    }
+    
+    func testLoadImages() async {
+        let mockImages = [testEditedImage, testEditedImage]
+        mockStorageService.mockLoadedImages = mockImages
         
-        let saveSuccess = await mockStorageService.saveEditedImageLocally(editedImage)
-        XCTAssertFalse(saveSuccess)
-        XCTAssertNotNil(mockStorageService.saveError)
+        let loadedImages = await mockStorageService.loadEditedImagesFromLocal()
+        
+        XCTAssertEqual(loadedImages.count, 2)
+    }
+    
+    func testDeleteImage() async {
+        mockStorageService.mockSaveSuccess = true
+        
+        let url = URL(fileURLWithPath: "/mock/path")
+        let success = await mockStorageService.deleteLocalImage(at: url)
+        
+        XCTAssertTrue(success)
     }
 }
 
