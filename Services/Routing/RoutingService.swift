@@ -73,56 +73,10 @@ public enum RoutingDecision {
     case noProvidersAvailable
 }
 
-/// Reasons why an upgrade might be required
-public enum UpgradeReason {
-    case insufficientBudgetCredits(required: Int, remaining: Int)
-    case insufficientPremiumCredits(required: Int, remaining: Int)
-    case premiumFeatureRequired(feature: String)
-    case tierLimitReached(tier: UserTier, limit: String)
-    
-    var displayTitle: String {
-        switch self {
-        case .insufficientBudgetCredits:
-            return "Out of Budget Credits"
-        case .insufficientPremiumCredits:
-            return "Out of Premium Credits"
-        case .premiumFeatureRequired:
-            return "Premium Feature"
-        case .tierLimitReached:
-            return "Tier Limit Reached"
-        }
-    }
-    
-    var displayMessage: String {
-        switch self {
-        case .insufficientBudgetCredits(let required, let remaining):
-            return "This edit requires \(required) budget credits, but you only have \(remaining) remaining this month."
-        case .insufficientPremiumCredits(let required, let remaining):
-            return "This edit requires \(required) premium credits, but you only have \(remaining) remaining this month."
-        case .premiumFeatureRequired(let feature):
-            return "\(feature) is a premium feature that requires PhotoStop Pro."
-        case .tierLimitReached(let tier, let limit):
-            return "You've reached the \(limit) limit for \(tier.displayName) users."
-        }
-    }
-}
-
-/// User tiers
-public enum UserTier: String, CaseIterable {
-    case free = "free"
-    case pro = "pro"
-    
-    var displayName: String {
-        switch self {
-        case .free: return "Free"
-        case .pro: return "Pro"
-        }
-    }
-}
-
-/// Usage tracker (simplified)
-final class UsageTracker {
-    static let shared = UsageTracker()
+/// Simple routing service for PhotoStop
+public final class RoutingService {
+    public static let shared = RoutingService()
+    private let usageTracker = UsageTracker.shared
     
     var currentTier: UserTier = .free
     var budgetCreditsRemaining: Int = 50

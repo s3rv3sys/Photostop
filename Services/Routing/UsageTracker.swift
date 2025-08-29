@@ -7,21 +7,6 @@
 
 import Foundation
 
-/// User subscription tier
-public enum Tier: String, CaseIterable {
-    case free = "free"
-    case pro = "pro"
-    
-    public var displayName: String {
-        switch self {
-        case .free:
-            return "Free"
-        case .pro:
-            return "Pro"
-        }
-    }
-}
-
 /// Usage statistics for a specific period
 public struct UsageStats: Codable {
     public let budgetUsed: Int
@@ -75,10 +60,10 @@ final class UsageTracker: @unchecked Sendable {
     // MARK: - Public Interface
     
     /// Get current user tier
-    public var currentTier: Tier {
+    public var currentTier: UserTier {
         get {
-            let tierString = store.string(forKey: kUserTier) ?? Tier.free.rawValue
-            return Tier(rawValue: tierString) ?? .free
+            let tierString = store.string(forKey: kUserTier) ?? UserTier.free.rawValue
+            return UserTier(rawValue: tierString) ?? .free
         }
         set {
             store.set(newValue.rawValue, forKey: kUserTier)
@@ -86,14 +71,15 @@ final class UsageTracker: @unchecked Sendable {
     }
     
     /// Check if user can perform an operation of the given cost class
-    public func canPerform(_ costClass: CostClass, tier: Tier? = nil) -> Bool {
+    public func canPerform(_ costClass: CostClass, tier: UserTier? = nil) -> Bool {
         let userTier = tier ?? currentTier
-        return remaining(for: userTier, cost: costClass) > 0
+        let used = currentUsage(for: costClass)
+        let capacity = capacity(for: userTier, cost: costClass)
+        return used < capacity
     }
     
-    /// Get remaining usage for a specific cost class and tier
-    public func remaining(for tier: Tier, cost: CostClass) -> Int {
-        ensureMonthBoundary()
+    /// Get remaining capacity for a specific tier and cost class
+    public func remaining(for tier: UserTier, cost: CostClass) -> Int {
         
         switch cost {
         case .freeLocal:
@@ -112,7 +98,7 @@ final class UsageTracker: @unchecked Sendable {
     }
     
     /// Get total capacity for a cost class and tier
-    public func capacity(for tier: Tier, cost: CostClass) -> Int {
+    public func capacity(for tier: UserTier, cost: CostClass) -> Int {
         switch cost {
         case .freeLocal:
             return .max
@@ -166,7 +152,7 @@ final class UsageTracker: @unchecked Sendable {
     }
     
     /// Get usage percentage for a cost class
-    public func usagePercentage(for tier: Tier, cost: CostClass) -> Double {
+    public func usagePercentage(for tier: UserTier, cost: CostClass) -> Double {
         let total = capacity(for: tier, cost: cost)
         if total == .max { return 0.0 }
         

@@ -322,3 +322,26 @@ public enum CameraError: Error, LocalizedError, Sendable {
     }
 }
 
+
+// MARK: - User Tier
+
+/// User subscription tier
+public enum UserTier: String, Codable, CaseIterable, Sendable {
+    case free = "free"
+    case pro = "pro"
+    
+    public var displayName: String {
+        switch self {
+        case .free: return "Free"
+        case .pro: return "Pro"
+        }
+    }
+    
+    public var description: String {
+        switch self {
+        case .free: return "Basic features with limited AI credits"
+        case .pro: return "Full access with premium AI and priority processing"
+        }
+    }
+}
+

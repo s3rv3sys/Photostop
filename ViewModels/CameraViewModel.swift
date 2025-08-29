@@ -376,57 +376,11 @@ enum CaptureState: Equatable {
     }
 }
 
-/// Edit tasks
-enum EditTask: String, CaseIterable {
-    case simpleEnhance = "enhance"
-    case portraitMode = "portrait"
-    case backgroundRemoval = "background"
-    case colorCorrection = "color"
-    case noiseReduction = "denoise"
-    case sharpening = "sharpen"
-    case hdrEffect = "hdr"
-    
-    var displayName: String {
-        switch self {
-        case .simpleEnhance: return "Simple Enhancement"
-        case .portraitMode: return "Portrait Mode"
-        case .backgroundRemoval: return "Background Removal"
-        case .colorCorrection: return "Color Correction"
-        case .noiseReduction: return "Noise Reduction"
-        case .sharpening: return "Sharpening"
-        case .hdrEffect: return "HDR Effect"
-        }
-    }
-}
-
 /// Pending edit request for retry
 struct PendingEditRequest {
     let image: UIImage
     let prompt: String
     let task: EditTask
     let useHighQuality: Bool
-}
-
-/// Edit request structure
-struct EditRequest {
-    let image: UIImage
-    let prompt: String
-    let task: EditTask
-    let useHighQuality: Bool
-}
-
-/// Edit result from routing service
-enum EditResult {
-    case success(image: UIImage, metadata: EditMetadata)
-    case requiresUpgrade(reason: UpgradeReason)
-    case failed(error: Error)
-}
-
-/// Edit metadata
-struct EditMetadata {
-    let provider: String
-    let processingTime: TimeInterval
-    let creditsUsed: Int
-    let quality: Float
 }
 

@@ -7,26 +7,6 @@
 
 import Foundation
 
-/// User subscription tier
-enum UserTier: String, Codable, CaseIterable {
-    case free = "free"
-    case pro = "pro"
-    
-    var displayName: String {
-        switch self {
-        case .free: return "Free"
-        case .pro: return "Pro"
-        }
-    }
-    
-    var description: String {
-        switch self {
-        case .free: return "Basic features with limited AI credits"
-        case .pro: return "Full access with premium AI and priority processing"
-        }
-    }
-}
-
 /// User entitlements based on subscription tier
 struct Entitlements: Codable, Sendable {
     let tier: UserTier

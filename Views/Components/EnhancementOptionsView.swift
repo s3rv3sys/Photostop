@@ -37,10 +37,10 @@ struct EnhancementOptionsView: View {
                     )
                     
                     QuickOptionButton(
-                        task: .lowLightEnhance,
+                        task: .cleanup,
                         selectedTask: $selectedTask,
                         icon: "moon.stars",
-                        title: "Night"
+                        title: "Cleanup"
                     )
                     
                     // More options button
@@ -219,14 +219,14 @@ struct EnhancementTypeButton: View {
             return ("person.crop.circle", "Portrait", .green)
         case .hdrEnhance:
             return ("camera.filters", "HDR", .orange)
-        case .lowLightEnhance:
-            return ("moon.stars", "Night", .purple)
-        case .actionEnhance:
-            return ("figure.run", "Action", .red)
+        case .cleanup:
+            return ("moon.stars", "Cleanup", .purple)
         case .backgroundRemoval:
             return ("scissors", "Remove BG", .pink)
-        case .creativeEdit:
+        case .creative:
             return ("paintbrush", "Creative", .yellow)
+        case .localEdit:
+            return ("location", "Local Edit", .red)
         }
     }
     
