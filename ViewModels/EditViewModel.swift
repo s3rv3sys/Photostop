@@ -1,15 +1,15 @@
 //
 //  EditViewModel.swift
-//  PhotoStop
+//  PhotoStop - Enhanced with Personalization v1
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
 import SwiftUI
 import Combine
 import os.log
 
-/// ViewModel for custom photo editing with creative prompts and routing integration
+/// ViewModel for custom photo editing with creative prompts, routing integration, and personalization feedback
 @MainActor
 final class EditViewModel: ObservableObject {
     
@@ -37,11 +37,21 @@ final class EditViewModel: ObservableObject {
     @Published var canUndo = false
     @Published var canRedo = false
     
+    // NEW: Personalization feedback
+    @Published var showingRatingPrompt = false
+    @Published var lastEditResult: EditResult?
+    @Published var pendingFeedbackItem: FrameBundle.Item?
+    
     // MARK: - Services
     
     private let routingService = RoutingService.shared
     private let usageTracker = UsageTracker.shared
     private let storageService = StorageService.shared
+    
+    // NEW: Personalization integration
+    private let personalizationEngine = PersonalizationEngine.shared
+    private let frameScoringService = FrameScoringService.shared
+    
     private let logger = Logger(subsystem: "PhotoStop", category: "EditViewModel")
     
     // MARK: - Private Properties
@@ -49,305 +59,252 @@ final class EditViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var undoStack: [UIImage] = []
     private var redoStack: [UIImage] = []
-    private var pendingEditRequest: PendingEditRequest?
+    private var currentEditSession: EditSession?
     
     // MARK: - Initialization
     
     init() {
         setupBindings()
+        loadEditHistory()
     }
     
-    // MARK: - Public Methods
+    // MARK: - Public Interface
     
-    /// Set the source image for editing
-    func setSourceImage(_ image: UIImage) {
-        sourceImage = image
-        editedImage = image
-        clearHistory()
-        logger.info("Source image set: \(Int(image.size.width))x\(Int(image.size.height))")
-    }
-    
-    /// Apply edit with current settings
-    func applyEdit() {
-        guard let image = editedImage ?? sourceImage else { return }
-        
-        let prompt = getEffectivePrompt()
-        guard !prompt.isEmpty else {
-            errorMessage = "Please enter a prompt or select a preset"
+    /// Apply edit with routing and personalization feedback
+    func applyEdit() async {
+        guard let sourceImage = sourceImage else {
+            errorMessage = "No source image available"
             return
         }
         
-        Task {
-            await performEdit(
-                image: image,
-                prompt: prompt,
+        guard !customPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Please enter an edit prompt"
+            return
+        }
+        
+        isProcessing = true
+        errorMessage = nil
+        processingProgress = 0.0
+        
+        defer {
+            isProcessing = false
+            processingProgress = 1.0
+        }
+        
+        do {
+            // Start edit session for personalization tracking
+            currentEditSession = EditSession(
+                sourceImage: sourceImage,
+                prompt: customPrompt,
                 task: selectedTask,
-                useHighQuality: useHighQuality
+                startTime: Date()
             )
+            
+            // Create edit request
+            let request = EditRequest(
+                image: sourceImage,
+                prompt: customPrompt,
+                task: selectedTask,
+                quality: useHighQuality ? .high : .standard,
+                targetSize: targetSize
+            )
+            
+            processingProgress = 0.2
+            
+            // Route the edit request
+            let decision = await routingService.routeEditRequest(request)
+            routingDecision = decision
+            
+            switch decision {
+            case .route(let provider, let config):
+                processingProgress = 0.4
+                
+                // Execute the edit
+                let result = try await provider.editImage(request, config: config)
+                
+                processingProgress = 0.8
+                
+                // Handle successful result
+                await handleEditSuccess(result: result, provider: provider)
+                
+            case .requiresUpgrade(let reason):
+                // Show paywall
+                showingPaywall = true
+                logger.info("Edit requires upgrade: \(reason.rawValue)")
+                
+            case .failed(let error):
+                errorMessage = error.localizedDescription
+                logger.error("Edit routing failed: \(error.localizedDescription)")
+            }
+            
+        } catch {
+            errorMessage = error.localizedDescription
+            logger.error("Edit failed: \(error.localizedDescription)")
         }
     }
     
-    /// Apply a preset prompt
-    func applyPreset(_ preset: PresetPrompt) {
+    /// Handle successful edit result with personalization tracking
+    private func handleEditSuccess(result: EditResult, provider: any ImageEditProvider) async {
+        // Update UI
+        editedImage = result.image
+        
+        // Add to history
+        let historyItem = EditHistoryItem(
+            id: UUID(),
+            sourceImage: sourceImage!,
+            editedImage: result.image,
+            prompt: customPrompt,
+            task: selectedTask,
+            provider: provider.name,
+            timestamp: Date(),
+            processingTime: result.processingTime
+        )
+        
+        editHistory.insert(historyItem, at: 0)
+        saveEditHistory()
+        
+        // Update undo stack
+        if let currentImage = editedImage {
+            undoStack.append(currentImage)
+            redoStack.removeAll()
+            updateUndoRedoState()
+        }
+        
+        // Store the result for potential personalization feedback
+        lastEditResult = result
+        
+        // Create a FrameBundle.Item for personalization (simulate capture metadata)
+        if let editSession = currentEditSession {
+            let simulatedMetadata = createSimulatedMetadata(for: result.image, from: editSession)
+            let frameItem = FrameBundle.Item(
+                image: result.image,
+                metadata: simulatedMetadata,
+                qualityScore: 0.8 // Default score for edited images
+            )
+            
+            pendingFeedbackItem = frameItem
+            
+            // Show rating prompt after a brief delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if self.personalizationEngine.currentProfile().enabled {
+                    self.showingRatingPrompt = true
+                }
+            }
+        }
+        
+        // Save to storage if requested
+        if let targetSize = targetSize {
+            try? await storageService.saveEditedImage(result.image, metadata: result.metadata)
+        }
+        
+        logger.info("Edit completed successfully with \(provider.name)")
+    }
+    
+    /// Process user feedback for personalization
+    func submitFeedback(_ feedback: PersonalizationEvent.Feedback) {
+        guard let frameItem = pendingFeedbackItem else {
+            logger.warning("No pending feedback item available")
+            return
+        }
+        
+        // Create personalization event
+        let event = PersonalizationEvent.from(item: frameItem, feedback: feedback)
+        
+        // Update personalization engine
+        personalizationEngine.update(with: event)
+        
+        // Clear pending feedback
+        pendingFeedbackItem = nil
+        showingRatingPrompt = false
+        
+        logger.info("Submitted personalization feedback: \(feedback.rawValue)")
+        
+        // Show brief confirmation
+        showFeedbackConfirmation(feedback)
+    }
+    
+    /// Skip feedback (implicit neutral)
+    func skipFeedback() {
+        pendingFeedbackItem = nil
+        showingRatingPrompt = false
+        logger.debug("Skipped personalization feedback")
+    }
+    
+    /// Apply preset prompt
+    func applyPresetPrompt(_ preset: PresetPrompt) {
         selectedPresetPrompt = preset
         customPrompt = preset.prompt
-        selectedTask = preset.suggestedTask
+        selectedTask = preset.task
         
-        applyEdit()
+        // Apply edit automatically for preset prompts
+        Task {
+            await applyEdit()
+        }
     }
     
     /// Undo last edit
     func undo() {
-        guard canUndo, let previousImage = undoStack.popLast() else { return }
+        guard !undoStack.isEmpty else { return }
         
         if let currentImage = editedImage {
             redoStack.append(currentImage)
         }
         
-        editedImage = previousImage
+        editedImage = undoStack.removeLast()
         updateUndoRedoState()
-        logger.info("Undo applied")
     }
     
     /// Redo last undone edit
     func redo() {
-        guard canRedo, let nextImage = redoStack.popLast() else { return }
+        guard !redoStack.isEmpty else { return }
         
         if let currentImage = editedImage {
             undoStack.append(currentImage)
         }
         
-        editedImage = nextImage
+        editedImage = redoStack.removeLast()
         updateUndoRedoState()
-        logger.info("Redo applied")
     }
     
-    /// Reset to original image
-    func resetToOriginal() {
-        guard let original = sourceImage else { return }
-        
-        if let current = editedImage {
-            undoStack.append(current)
-        }
-        
-        editedImage = original
+    /// Clear current edit
+    func clearEdit() {
+        editedImage = nil
+        customPrompt = ""
+        selectedPresetPrompt = nil
+        errorMessage = nil
+        routingDecision = nil
+        undoStack.removeAll()
         redoStack.removeAll()
         updateUndoRedoState()
-        logger.info("Reset to original")
     }
     
-    /// Save edited image to Photos
-    func saveToPhotos() {
-        guard let image = editedImage else { return }
-        
-        Task {
-            do {
-                try await storageService.saveToPhotos(image)
-                logger.info("Image saved to Photos")
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to save: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-    
-    /// Save to edit history
-    func saveToHistory() {
-        guard let original = sourceImage,
-              let edited = editedImage else { return }
-        
-        let historyItem = EditHistoryItem(
-            originalImage: original,
-            editedImage: edited,
-            prompt: getEffectivePrompt(),
-            task: selectedTask,
-            timestamp: Date(),
-            processingTime: 0 // Would be tracked during edit
-        )
-        
-        Task {
-            do {
-                try await storageService.saveEditedImageLocally(EditedImage(
-                    originalImage: original,
-                    enhancedImage: edited,
-                    prompt: historyItem.prompt,
-                    qualityScore: nil,
-                    processingTime: historyItem.processingTime
-                ))
-                
-                await MainActor.run {
-                    editHistory.insert(historyItem, at: 0)
-                    logger.info("Edit saved to history")
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to save to history: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-    
-    /// Handle paywall dismissal
-    func handlePaywallDismissal(purchased: Bool) {
+    /// Retry edit after paywall completion
+    func retryAfterUpgrade() {
         showingPaywall = false
-        
-        if purchased {
-            // Retry the pending operation
-            retryEdit()
-        } else {
-            // User declined, clear pending request
-            pendingEditRequest = nil
-            isProcessing = false
-        }
-    }
-    
-    /// Retry the last edit operation
-    func retryEdit() {
-        guard let request = pendingEditRequest else { return }
-        
         Task {
-            await performEdit(
-                image: request.image,
-                prompt: request.prompt,
-                task: request.task,
-                useHighQuality: request.useHighQuality
-            )
+            await applyEdit()
         }
     }
     
     // MARK: - Private Methods
     
     private func setupBindings() {
-        // Listen for usage updates
-        NotificationCenter.default.publisher(for: .usageUpdated)
+        // Monitor usage changes
+        usageTracker.$currentUsage
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
+                // Update UI based on usage changes
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
         
-        // Listen for subscription changes
-        NotificationCenter.default.publisher(for: .subscriptionStatusChanged)
+        // Monitor personalization changes
+        personalizationEngine.$profile
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
-    }
-    
-    private func getEffectivePrompt() -> String {
-        if let preset = selectedPresetPrompt {
-            return preset.prompt
-        }
-        return customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    private func performEdit(
-        image: UIImage,
-        prompt: String,
-        task: EditTask,
-        useHighQuality: Bool
-    ) async {
-        
-        isProcessing = true
-        processingProgress = 0.0
-        errorMessage = nil
-        
-        // Store pending request for potential retry
-        pendingEditRequest = PendingEditRequest(
-            image: image,
-            prompt: prompt,
-            task: task,
-            useHighQuality: useHighQuality
-        )
-        
-        do {
-            // Get routing decision
-            let decision = routingService.getRoutingDecision(
-                for: task,
-                tier: usageTracker.currentTier,
-                imageSize: image.size
-            )
-            
-            routingDecision = decision
-            processingProgress = 0.2
-            
-            // Check if user has sufficient credits
-            if decision.willConsumeCredit && !usageTracker.canPerform(decision.costClass) {
-                await MainActor.run {
-                    isProcessing = false
-                    showingPaywall = true
-                }
-                return
-            }
-            
-            processingProgress = 0.4
-            
-            // Perform the edit
-            let result = try await routingService.requestEdit(
-                source: image,
-                prompt: prompt,
-                requestedTask: task,
-                tier: usageTracker.currentTier,
-                targetSize: targetSize,
-                allowWatermark: !useHighQuality,
-                quality: useHighQuality ? 0.95 : 0.8
-            )
-            
-            await MainActor.run {
-                // Save current state to undo stack
-                if let current = editedImage {
-                    undoStack.append(current)
-                }
-                
-                // Clear redo stack
-                redoStack.removeAll()
-                
-                // Set new image
-                editedImage = result.image
-                
-                // Update state
-                isProcessing = false
-                processingProgress = 1.0
-                pendingEditRequest = nil
-                
-                updateUndoRedoState()
-                
-                logger.info("Edit completed using \(result.provider.rawValue)")
-            }
-            
-        } catch let error as RoutingError {
-            await handleRoutingError(error)
-        } catch {
-            await MainActor.run {
-                isProcessing = false
-                processingProgress = 0.0
-                errorMessage = "Edit failed: \(error.localizedDescription)"
-                logger.error("Edit failed: \(error)")
-            }
-        }
-    }
-    
-    private func handleRoutingError(_ error: RoutingError) async {
-        await MainActor.run {
-            isProcessing = false
-            processingProgress = 0.0
-            
-            switch error {
-            case .insufficientCredits(let required, let remaining):
-                showingPaywall = true
-                errorMessage = "Need \(required.description) credits. \(remaining) remaining."
-                
-            case .allProvidersFailed(let originalError):
-                errorMessage = "All AI providers failed. Try again later."
-                logger.error("All providers failed: \(originalError)")
-                
-            case .noProvidersAvailable:
-                errorMessage = "No AI providers available for this task."
-                
-            case .unknownError(let underlyingError):
-                errorMessage = "Edit failed: \(underlyingError.localizedDescription)"
-            }
-        }
     }
     
     private func updateUndoRedoState() {
@@ -355,192 +312,146 @@ final class EditViewModel: ObservableObject {
         canRedo = !redoStack.isEmpty
     }
     
-    private func clearHistory() {
-        undoStack.removeAll()
-        redoStack.removeAll()
-        updateUndoRedoState()
+    private func loadEditHistory() {
+        // Load from UserDefaults or Core Data
+        if let data = UserDefaults.standard.data(forKey: "edit_history"),
+           let history = try? JSONDecoder().decode([EditHistoryItem].self, from: data) {
+            editHistory = history
+        }
+    }
+    
+    private func saveEditHistory() {
+        // Keep only recent 50 items
+        let recentHistory = Array(editHistory.prefix(50))
+        
+        if let data = try? JSONEncoder().encode(recentHistory) {
+            UserDefaults.standard.set(data, forKey: "edit_history")
+        }
+    }
+    
+    private func createSimulatedMetadata(for image: UIImage, from session: EditSession) -> FrameMetadata {
+        // Create simulated metadata for edited images (for personalization)
+        return FrameMetadata(
+            lens: .wide, // Default to wide lens
+            iso: 400, // Moderate ISO
+            shutterMS: 16.0, // 1/60s
+            aperture: 2.8,
+            meanLuma: 0.5, // Assume balanced exposure
+            motionScore: 0.2, // Assume sharp (edited image)
+            hasDepth: false, // Edited images typically don't have depth
+            depthQuality: 0.0,
+            timestamp: session.startTime,
+            isLowLight: false,
+            hasMotionBlur: false,
+            isPortraitSuitable: session.task == .portrait
+        )
+    }
+    
+    private func showFeedbackConfirmation(_ feedback: PersonalizationEvent.Feedback) {
+        // Show brief toast or animation
+        let message = feedback == .positive ? 
+            "Thanks! We'll improve your picks." : 
+            "Got it! We'll adjust your preferences."
+        
+        // This would trigger a toast notification in the UI
+        // For now, just log it
+        logger.info("Feedback confirmation: \(message)")
     }
 }
 
 // MARK: - Supporting Types
 
-extension EditViewModel {
+/// Edit session for tracking personalization context
+private struct EditSession {
+    let sourceImage: UIImage
+    let prompt: String
+    let task: EditTask
+    let startTime: Date
+}
+
+/// Edit history item
+struct EditHistoryItem: Codable, Identifiable {
+    let id: UUID
+    let sourceImage: Data // Encoded as Data for persistence
+    let editedImage: Data
+    let prompt: String
+    let task: EditTask
+    let provider: String
+    let timestamp: Date
+    let processingTime: TimeInterval
     
-    struct PresetPrompt: Identifiable, Hashable {
-        let id = UUID()
-        let name: String
-        let prompt: String
-        let suggestedTask: EditTask
-        let category: Category
+    init(id: UUID, sourceImage: UIImage, editedImage: UIImage, prompt: String, task: EditTask, provider: String, timestamp: Date, processingTime: TimeInterval) {
+        self.id = id
+        self.sourceImage = sourceImage.jpegData(compressionQuality: 0.8) ?? Data()
+        self.editedImage = editedImage.jpegData(compressionQuality: 0.8) ?? Data()
+        self.prompt = prompt
+        self.task = task
+        self.provider = provider
+        self.timestamp = timestamp
+        self.processingTime = processingTime
+    }
+    
+    var sourceUIImage: UIImage? {
+        return UIImage(data: sourceImage)
+    }
+    
+    var editedUIImage: UIImage? {
+        return UIImage(data: editedImage)
+    }
+}
+
+/// Preset prompts for common edits
+struct PresetPrompt: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let prompt: String
+    let task: EditTask
+    let category: Category
+    
+    enum Category: String, CaseIterable {
+        case artistic = "Artistic"
+        case enhancement = "Enhancement"
+        case style = "Style"
+        case creative = "Creative"
+        case cleanup = "Cleanup"
         
-        enum Category: String, CaseIterable {
-            case artistic = "Artistic"
-            case enhancement = "Enhancement"
-            case style = "Style"
-            case creative = "Creative"
-            case cleanup = "Cleanup"
+        var icon: String {
+            switch self {
+            case .artistic: return "paintbrush.fill"
+            case .enhancement: return "wand.and.stars"
+            case .style: return "camera.filters"
+            case .creative: return "sparkles"
+            case .cleanup: return "trash.fill"
+            }
         }
     }
     
-    struct EditHistoryItem: Identifiable {
-        let id = UUID()
-        let originalImage: UIImage
-        let editedImage: UIImage
-        let prompt: String
-        let task: EditTask
-        let timestamp: Date
-        let processingTime: TimeInterval
-    }
-    
-    private struct PendingEditRequest {
-        let image: UIImage
-        let prompt: String
-        let task: EditTask
-        let useHighQuality: Bool
-    }
-}
-
-// MARK: - Preset Prompts
-
-extension EditViewModel {
-    
-    static let presetPrompts: [PresetPrompt] = [
+    static let presets: [PresetPrompt] = [
         // Artistic
-        PresetPrompt(
-            name: "Oil Painting",
-            prompt: "Transform into a beautiful oil painting with rich textures and artistic brushstrokes",
-            suggestedTask: .restyle,
-            category: .artistic
-        ),
-        PresetPrompt(
-            name: "Watercolor",
-            prompt: "Convert to a delicate watercolor painting with soft, flowing colors",
-            suggestedTask: .restyle,
-            category: .artistic
-        ),
-        PresetPrompt(
-            name: "Vintage Film",
-            prompt: "Apply vintage film aesthetic with warm tones and subtle grain",
-            suggestedTask: .restyle,
-            category: .artistic
-        ),
+        PresetPrompt(name: "Oil Painting", prompt: "Transform into a beautiful oil painting with visible brushstrokes", task: .restyle, category: .artistic),
+        PresetPrompt(name: "Watercolor", prompt: "Convert to a soft watercolor painting with flowing colors", task: .restyle, category: .artistic),
+        PresetPrompt(name: "Pencil Sketch", prompt: "Create a detailed pencil sketch drawing", task: .restyle, category: .artistic),
         
         // Enhancement
-        PresetPrompt(
-            name: "Portrait Enhancement",
-            prompt: "Enhance portrait with perfect skin, bright eyes, and natural beauty",
-            suggestedTask: .simpleEnhance,
-            category: .enhancement
-        ),
-        PresetPrompt(
-            name: "Landscape Boost",
-            prompt: "Enhance landscape with vibrant colors, sharp details, and dramatic sky",
-            suggestedTask: .simpleEnhance,
-            category: .enhancement
-        ),
-        PresetPrompt(
-            name: "Low Light Fix",
-            prompt: "Brighten and enhance low light photo while reducing noise",
-            suggestedTask: .simpleEnhance,
-            category: .enhancement
-        ),
+        PresetPrompt(name: "Auto Enhance", prompt: "Enhance colors, contrast, and sharpness for the best quality", task: .enhance, category: .enhancement),
+        PresetPrompt(name: "Brighten", prompt: "Brighten the image while maintaining natural colors", task: .enhance, category: .enhancement),
+        PresetPrompt(name: "Sharpen Details", prompt: "Enhance sharpness and bring out fine details", task: .enhance, category: .enhancement),
         
         // Style
-        PresetPrompt(
-            name: "Cinematic",
-            prompt: "Apply cinematic color grading with dramatic lighting and mood",
-            suggestedTask: .restyle,
-            category: .style
-        ),
-        PresetPrompt(
-            name: "Black & White",
-            prompt: "Convert to stunning black and white with perfect contrast",
-            suggestedTask: .restyle,
-            category: .style
-        ),
-        PresetPrompt(
-            name: "Warm Sunset",
-            prompt: "Add warm, golden sunset lighting and atmosphere",
-            suggestedTask: .restyle,
-            category: .style
-        ),
+        PresetPrompt(name: "Vintage Film", prompt: "Apply a vintage film look with warm tones and grain", task: .restyle, category: .style),
+        PresetPrompt(name: "Black & White", prompt: "Convert to dramatic black and white with enhanced contrast", task: .restyle, category: .style),
+        PresetPrompt(name: "Cinematic", prompt: "Apply cinematic color grading with teal and orange tones", task: .restyle, category: .style),
         
         // Creative
-        PresetPrompt(
-            name: "Fantasy Art",
-            prompt: "Transform into magical fantasy artwork with ethereal effects",
-            suggestedTask: .restyle,
-            category: .creative
-        ),
-        PresetPrompt(
-            name: "Cyberpunk",
-            prompt: "Apply cyberpunk aesthetic with neon colors and futuristic mood",
-            suggestedTask: .restyle,
-            category: .creative
-        ),
-        PresetPrompt(
-            name: "Anime Style",
-            prompt: "Convert to anime/manga art style with vibrant colors",
-            suggestedTask: .restyle,
-            category: .creative
-        ),
+        PresetPrompt(name: "Fantasy Art", prompt: "Transform into a magical fantasy artwork with ethereal effects", task: .restyle, category: .creative),
+        PresetPrompt(name: "Cyberpunk", prompt: "Apply cyberpunk style with neon colors and futuristic effects", task: .restyle, category: .creative),
+        PresetPrompt(name: "Double Exposure", prompt: "Create a double exposure effect with artistic blending", task: .creative, category: .creative),
         
         // Cleanup
-        PresetPrompt(
-            name: "Remove Background",
-            prompt: "Cleanly remove background while preserving subject details",
-            suggestedTask: .bgRemove,
-            category: .cleanup
-        ),
-        PresetPrompt(
-            name: "Object Removal",
-            prompt: "Remove unwanted objects and distractions from the image",
-            suggestedTask: .cleanup,
-            category: .cleanup
-        ),
-        PresetPrompt(
-            name: "Blemish Fix",
-            prompt: "Remove blemishes, spots, and imperfections naturally",
-            suggestedTask: .cleanup,
-            category: .cleanup
-        )
+        PresetPrompt(name: "Remove Background", prompt: "Remove the background and make it transparent", task: .removeBackground, category: .cleanup),
+        PresetPrompt(name: "Noise Reduction", prompt: "Reduce noise while preserving important details", task: .enhance, category: .cleanup),
+        PresetPrompt(name: "Fix Lighting", prompt: "Correct lighting and exposure issues", task: .enhance, category: .cleanup),
+        PresetPrompt(name: "Upscale", prompt: "Increase resolution while maintaining quality", task: .enhance, category: .cleanup)
     ]
-}
-
-// MARK: - Computed Properties
-
-extension EditViewModel {
-    
-    /// Whether editing is available
-    var canEdit: Bool {
-        sourceImage != nil && !isProcessing
-    }
-    
-    /// Current usage statistics
-    var usageStats: (budget: Int, premium: Int, budgetRemaining: Int, premiumRemaining: Int) {
-        let tier = usageTracker.currentTier
-        let budgetRemaining = usageTracker.remaining(for: tier, cost: .budget)
-        let premiumRemaining = usageTracker.remaining(for: tier, cost: .premium)
-        let budgetCapacity = usageTracker.capacity(for: tier, cost: .budget)
-        let premiumCapacity = usageTracker.capacity(for: tier, cost: .premium)
-        
-        return (
-            budget: budgetCapacity - budgetRemaining,
-            premium: premiumCapacity - premiumRemaining,
-            budgetRemaining: budgetRemaining,
-            premiumRemaining: premiumRemaining
-        )
-    }
-    
-    /// Whether user should be encouraged to upgrade
-    var shouldShowUpgradePrompt: Bool {
-        let tier = usageTracker.currentTier
-        if tier == .pro { return false }
-        
-        let budgetRemaining = usageTracker.remaining(for: tier, cost: .budget)
-        let premiumRemaining = usageTracker.remaining(for: tier, cost: .premium)
-        
-        return budgetRemaining < 10 || premiumRemaining < 2
-    }
 }
 

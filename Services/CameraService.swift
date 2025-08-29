@@ -1,326 +1,678 @@
 //
 //  CameraService.swift
-//  PhotoStop
+//  PhotoStop - Capture v2
 //
-//  Created by Esh on 2025-08-29.
+//  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
 
+import Foundation
 import AVFoundation
 import UIKit
-import Combine
+import Vision
+import OSLog
 
-/// Service responsible for camera operations including burst capture and live preview
+/// Advanced camera service with multi-lens burst capture and depth integration
 @MainActor
-class CameraService: NSObject, ObservableObject {
+public final class CameraService: NSObject, ObservableObject {
+    
+    static let shared = CameraService()
     
     // MARK: - Published Properties
-    @Published var isSessionRunning = false
-    @Published var isCapturing = false
-    @Published var captureError: CameraError?
-    @Published var authorizationStatus: AVAuthorizationStatus = .notDetermined
+    
+    @Published public var isSessionRunning = false
+    @Published public var isCapturing = false
+    @Published public var captureProgress: Double = 0.0
+    @Published public var lastError: CameraError?
+    @Published public var authorizationStatus: AVAuthorizationStatus = .notDetermined
+    
+    // MARK: - Public Properties
+    
+    public let captureSession = AVCaptureSession()
+    public private(set) var isFlashOn = false
     
     // MARK: - Private Properties
-    private let session = AVCaptureSession()
-    private var videoDeviceInput: AVCaptureDeviceInput?
-    private var photoOutput = AVCapturePhotoOutput()
-    private let sessionQueue = DispatchQueue(label: "camera.session.queue")
     
-    // Burst capture properties
-    private var burstCaptureCount = 0
-    private var targetBurstCount = 3
-    private var capturedImages: [UIImage] = []
-    private var burstCompletion: (([UIImage]) -> Void)?
+    private let logger = Logger(subsystem: "com.servesys.photostop", category: "CameraService")
+    private let lensService = CameraLensService.shared
+    private let depthService = DepthService.shared
     
-    // Preview layer
-    private var previewLayer: AVCaptureVideoPreviewLayer?
+    // Multi-cam session for simultaneous capture
+    private var multiCamSession: AVCaptureMultiCamSession?
     
-    override init() {
+    // Single-cam components for fallback
+    private var currentInput: AVCaptureDeviceInput?
+    private var photoOutput: AVCapturePhotoOutput?
+    
+    // Multi-cam components
+    private var multiCamInputs: [AVCaptureDeviceInput] = []
+    private var multiCamOutputs: [AVCapturePhotoOutput] = []
+    
+    // Capture state
+    private var captureStartTime: Date?
+    private var capturedFrames: [CapturedFrame] = []
+    private var expectedFrameCount = 0
+    private var captureCompletion: ((Result<FrameBundle, CameraError>) -> Void)?
+    
+    // Face detection
+    private let faceDetectionRequest = VNDetectFaceRectanglesRequest()
+    
+    // MARK: - Initialization
+    
+    private override init() {
         super.init()
-        checkAuthorizationStatus()
+        setupFaceDetection()
     }
     
-    // MARK: - Public Methods
+    // MARK: - Public Interface
     
     /// Request camera permission and setup session
-    func requestCameraPermission() async -> Bool {
+    public func requestPermission() async -> Bool {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         
         switch status {
         case .authorized:
-            await setupSession()
+            authorizationStatus = .authorized
             return true
+            
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
-            if granted {
-                await setupSession()
-            }
-            await updateAuthorizationStatus()
+            authorizationStatus = granted ? .authorized : .denied
             return granted
+            
         case .denied, .restricted:
-            await updateAuthorizationStatus()
+            authorizationStatus = status
             return false
+            
         @unknown default:
+            authorizationStatus = .denied
             return false
         }
     }
     
-    /// Start the camera session
-    func startSession() {
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            if !self.session.isRunning {
-                self.session.startRunning()
-                
-                DispatchQueue.main.async {
-                    self.isSessionRunning = self.session.isRunning
+    /// Setup camera session with optimal configuration
+    public func setupSession() async throws {
+        guard await requestPermission() else {
+            throw CameraError.permissionDenied
+        }
+        
+        // Discover available lenses
+        lensService.discoverAvailableLenses()
+        
+        // Setup multi-cam if supported, otherwise fallback to single-cam
+        if lensService.isMultiCamSupported {
+            try setupMultiCamSession()
+        } else {
+            try setupSingleCamSession()
+        }
+        
+        logger.info("Camera session setup complete - Multi-cam: \(lensService.isMultiCamSupported)")
+    }
+    
+    /// Start camera session
+    public func startSession() {
+        guard !isSessionRunning else { return }
+        
+        Task {
+            do {
+                if captureSession.inputs.isEmpty {
+                    try await setupSession()
                 }
+                
+                if lensService.isMultiCamSupported {
+                    multiCamSession?.startRunning()
+                } else {
+                    captureSession.startRunning()
+                }
+                
+                isSessionRunning = true
+                logger.info("Camera session started")
+                
+            } catch {
+                lastError = error as? CameraError ?? .sessionSetupFailed
+                logger.error("Failed to start camera session: \(error.localizedDescription)")
             }
         }
     }
     
-    /// Stop the camera session
-    func stopSession() {
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            if self.session.isRunning {
-                self.session.stopRunning()
-                
-                DispatchQueue.main.async {
-                    self.isSessionRunning = false
-                }
-            }
+    /// Stop camera session
+    public func stopSession() {
+        guard isSessionRunning else { return }
+        
+        if lensService.isMultiCamSupported {
+            multiCamSession?.stopRunning()
+        } else {
+            captureSession.stopRunning()
         }
+        
+        isSessionRunning = false
+        logger.info("Camera session stopped")
     }
     
-    /// Capture burst of images with different exposures
-    func captureBurst(count: Int = 3) async -> [UIImage] {
+    /// Capture multi-lens burst with depth and metadata
+    public func captureBundle() async throws -> FrameBundle {
         guard !isCapturing else {
-            return []
+            throw CameraError.captureInProgress
         }
         
         isCapturing = true
-        capturedImages.removeAll()
-        burstCaptureCount = 0
-        targetBurstCount = count
+        captureProgress = 0.0
+        captureStartTime = Date()
+        capturedFrames = []
+        lastError = nil
         
-        return await withCheckedContinuation { continuation in
-            burstCompletion = { images in
-                continuation.resume(returning: images)
+        defer {
+            isCapturing = false
+            captureProgress = 0.0
+        }
+        
+        do {
+            let bundle: FrameBundle
+            
+            if lensService.isMultiCamSupported {
+                bundle = try await captureMultiCamBundle()
+            } else {
+                bundle = try await captureSingleCamBundle()
             }
             
-            // Start burst capture
-            sessionQueue.async { [weak self] in
-                self?.startBurstCapture()
-            }
+            logger.info("Captured bundle with \(bundle.frameCount) frames in \(bundle.captureDuration)s")
+            return bundle
+            
+        } catch {
+            lastError = error as? CameraError ?? .captureFailure
+            logger.error("Bundle capture failed: \(error.localizedDescription)")
+            throw error
         }
     }
     
-    /// Get preview layer for camera view
-    func getPreviewLayer() -> AVCaptureVideoPreviewLayer? {
-        guard previewLayer == nil else { return previewLayer }
-        
-        previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer?.videoGravity = .resizeAspectFill
-        return previewLayer
+    /// Toggle flash on/off
+    public func toggleFlash() {
+        isFlashOn.toggle()
+        logger.info("Flash toggled: \(isFlashOn ? "ON" : "OFF")")
     }
     
-    /// Switch between front and back camera
-    func switchCamera() {
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            self.session.beginConfiguration()
-            
-            // Remove current input
-            if let currentInput = self.videoDeviceInput {
-                self.session.removeInput(currentInput)
-            }
-            
-            // Get the other camera
-            let currentPosition = self.videoDeviceInput?.device.position ?? .back
-            let newPosition: AVCaptureDevice.Position = currentPosition == .back ? .front : .back
-            
-            if let newDevice = self.getCamera(for: newPosition),
-               let newInput = try? AVCaptureDeviceInput(device: newDevice) {
-                
-                if self.session.canAddInput(newInput) {
-                    self.session.addInput(newInput)
-                    self.videoDeviceInput = newInput
-                }
-            }
-            
-            self.session.commitConfiguration()
-        }
-    }
-    
-    // MARK: - Private Methods
-    
-    private func checkAuthorizationStatus() {
-        authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
-    }
-    
-    private func updateAuthorizationStatus() async {
-        authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
-    }
-    
-    private func setupSession() async {
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            self.session.beginConfiguration()
-            
-            // Configure session preset
-            if self.session.canSetSessionPreset(.photo) {
-                self.session.sessionPreset = .photo
-            }
-            
-            // Add video input
-            guard let videoDevice = self.getCamera(for: .back),
-                  let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice) else {
-                DispatchQueue.main.async {
-                    self.captureError = .deviceNotFound
-                }
-                return
-            }
-            
-            if self.session.canAddInput(videoDeviceInput) {
-                self.session.addInput(videoDeviceInput)
-                self.videoDeviceInput = videoDeviceInput
-            }
-            
-            // Add photo output
-            if self.session.canAddOutput(self.photoOutput) {
-                self.session.addOutput(self.photoOutput)
-                
-                // Configure photo output
-                self.photoOutput.isHighResolutionCaptureEnabled = true
-                if self.photoOutput.isLivePhotoCaptureSupported {
-                    self.photoOutput.isLivePhotoCaptureEnabled = false
-                }
-            }
-            
-            self.session.commitConfiguration()
-        }
-    }
-    
-    private func getCamera(for position: AVCaptureDevice.Position) -> AVCaptureDevice? {
-        let deviceTypes: [AVCaptureDevice.DeviceType] = [
-            .builtInWideAngleCamera,
-            .builtInDualCamera,
-            .builtInTrueDepthCamera
-        ]
-        
-        let discoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: deviceTypes,
-            mediaType: .video,
-            position: position
-        )
-        
-        return discoverySession.devices.first
-    }
-    
-    private func startBurstCapture() {
-        guard burstCaptureCount < targetBurstCount else {
-            completeBurstCapture()
+    /// Switch to a specific lens (single-cam mode)
+    public func switchToLens(_ lens: FrameMetadata.Lens) async throws {
+        guard !lensService.isMultiCamSupported else {
+            logger.warning("Cannot switch lens in multi-cam mode")
             return
         }
         
-        let settings = AVCapturePhotoSettings()
-        settings.isHighResolutionPhotoEnabled = true
+        guard let device = lensService.device(for: lens) else {
+            throw CameraError.lensNotAvailable
+        }
         
-        // Vary exposure for burst
-        if let device = videoDeviceInput?.device {
-            do {
-                try device.lockForConfiguration()
-                
-                // Adjust exposure for each shot
-                let exposureBias: Float = {
-                    switch burstCaptureCount {
-                    case 0: return -0.5  // Slightly underexposed
-                    case 1: return 0.0   // Normal exposure
-                    case 2: return 0.5   // Slightly overexposed
-                    default: return 0.0
-                    }
-                }()
-                
-                device.setExposureTargetBias(exposureBias, completionHandler: nil)
-                device.unlockForConfiguration()
-            } catch {
-                print("Failed to adjust exposure: \(error)")
+        try await switchCameraInput(to: device)
+        lensService.currentLens = lens
+        
+        logger.info("Switched to lens: \(lens.displayName)")
+    }
+    
+    // MARK: - Multi-Cam Capture
+    
+    private func captureMultiCamBundle() async throws -> FrameBundle {
+        guard let session = multiCamSession else {
+            throw CameraError.multiCamNotAvailable
+        }
+        
+        let devices = lensService.devicesForMultiCam()
+        let lenses = devices.compactMap { device in
+            lensService.availableLenses.first { lens in
+                lensService.device(for: lens) == device
             }
         }
         
-        photoOutput.capturePhoto(with: settings, delegate: self)
+        // Calculate expected frame count (3-5 frames per lens with exposure bracketing)
+        expectedFrameCount = lenses.count * 3 // 3 exposure brackets per lens
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            captureCompletion = continuation.resume
+            
+            // Capture from each output simultaneously
+            for (index, output) in multiCamOutputs.enumerated() {
+                guard index < lenses.count else { continue }
+                
+                let lens = lenses[index]
+                let bracketSettings = createBracketSettings(for: lens)
+                
+                output.capturePhoto(with: bracketSettings, delegate: self)
+            }
+            
+            // Timeout after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                if self.isCapturing {
+                    continuation.resume(throwing: CameraError.captureTimeout)
+                }
+            }
+        }
     }
     
-    private func completeBurstCapture() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+    // MARK: - Single-Cam Capture (Fallback)
+    
+    private func captureSingleCamBundle() async throws -> FrameBundle {
+        let availableLenses = lensService.availableLenses
+        var allFrames: [CapturedFrame] = []
+        
+        // Calculate expected frame count
+        expectedFrameCount = availableLenses.count * 3 // 3 exposure brackets per lens
+        
+        // Capture from each lens sequentially
+        for lens in availableLenses {
+            guard let device = lensService.device(for: lens) else { continue }
             
-            self.isCapturing = false
-            self.burstCompletion?(self.capturedImages)
-            self.burstCompletion = nil
+            // Switch to this lens
+            try await switchCameraInput(to: device)
+            
+            // Capture bracketed frames
+            let frames = try await captureBracketedFrames(for: lens)
+            allFrames.append(contentsOf: frames)
+            
+            // Update progress
+            captureProgress = Double(allFrames.count) / Double(expectedFrameCount)
+        }
+        
+        // Process captured frames into bundle
+        return try await processFramesIntoBundle(allFrames)
+    }
+    
+    private func captureBracketedFrames(for lens: FrameMetadata.Lens) async throws -> [CapturedFrame] {
+        guard let output = photoOutput else {
+            throw CameraError.outputNotConfigured
+        }
+        
+        let bracketSettings = createBracketSettings(for: lens)
+        var frames: [CapturedFrame] = []
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            var capturedCount = 0
+            let expectedCount = bracketSettings.bracketedSettings.count
+            
+            let delegate = BracketCaptureDelegate(lens: lens) { result in
+                switch result {
+                case .success(let frame):
+                    frames.append(frame)
+                    capturedCount += 1
+                    
+                    if capturedCount >= expectedCount {
+                        continuation.resume(returning: frames)
+                    }
+                    
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+            
+            output.capturePhoto(with: bracketSettings, delegate: delegate)
+        }
+    }
+    
+    // MARK: - Session Setup
+    
+    private func setupMultiCamSession() throws {
+        multiCamSession = AVCaptureMultiCamSession()
+        guard let session = multiCamSession else {
+            throw CameraError.multiCamNotAvailable
+        }
+        
+        session.beginConfiguration()
+        
+        let devices = lensService.devicesForMultiCam()
+        
+        for device in devices {
+            // Create input
+            let input = try AVCaptureDeviceInput(device: device)
+            guard session.canAddInput(input) else {
+                logger.warning("Cannot add input for device: \(device.localizedName)")
+                continue
+            }
+            session.addInput(input)
+            multiCamInputs.append(input)
+            
+            // Create output
+            let output = AVCapturePhotoOutput()
+            output.isDepthDataDeliveryEnabled = lensService.supportsDepthCapture(
+                lens: lensService.availableLenses.first { lensService.device(for: $0) == device } ?? .wide
+            )
+            
+            guard session.canAddOutput(output) else {
+                logger.warning("Cannot add output for device: \(device.localizedName)")
+                continue
+            }
+            session.addOutput(output)
+            multiCamOutputs.append(output)
+        }
+        
+        session.commitConfiguration()
+        
+        logger.info("Multi-cam session configured with \(multiCamInputs.count) inputs")
+    }
+    
+    private func setupSingleCamSession() throws {
+        captureSession.beginConfiguration()
+        
+        // Use wide lens as default
+        guard let wideDevice = lensService.device(for: .wide) else {
+            throw CameraError.noCamera
+        }
+        
+        let input = try AVCaptureDeviceInput(device: wideDevice)
+        guard captureSession.canAddInput(input) else {
+            throw CameraError.inputNotSupported
+        }
+        captureSession.addInput(input)
+        currentInput = input
+        
+        let output = AVCapturePhotoOutput()
+        output.isDepthDataDeliveryEnabled = lensService.supportsDepthCapture(lens: .wide)
+        
+        guard captureSession.canAddOutput(output) else {
+            throw CameraError.outputNotSupported
+        }
+        captureSession.addOutput(output)
+        photoOutput = output
+        
+        captureSession.commitConfiguration()
+        
+        logger.info("Single-cam session configured")
+    }
+    
+    private func switchCameraInput(to device: AVCaptureDevice) async throws {
+        guard let currentInput = currentInput else {
+            throw CameraError.inputNotConfigured
+        }
+        
+        captureSession.beginConfiguration()
+        captureSession.removeInput(currentInput)
+        
+        let newInput = try AVCaptureDeviceInput(device: device)
+        guard captureSession.canAddInput(newInput) else {
+            // Restore previous input
+            captureSession.addInput(currentInput)
+            captureSession.commitConfiguration()
+            throw CameraError.inputNotSupported
+        }
+        
+        captureSession.addInput(newInput)
+        self.currentInput = newInput
+        captureSession.commitConfiguration()
+    }
+    
+    // MARK: - Capture Settings
+    
+    private func createBracketSettings(for lens: FrameMetadata.Lens) -> AVCapturePhotoBracketSettings {
+        let exposureBiases = lensService.exposureBracketSettings(for: lens)
+        
+        let bracketedSettings = exposureBiases.map { bias in
+            AVCaptureAutoExposureBracketedStillImageSettings.autoExposureSettings(exposureTargetBias: bias)
+        }
+        
+        let settings = AVCapturePhotoBracketSettings(
+            rawPixelFormatType: 0,
+            processedFormat: [AVVideoCodecKey: AVVideoCodecType.jpeg],
+            bracketedSettings: bracketedSettings
+        )
+        
+        // Configure depth data delivery if supported
+        if lensService.supportsDepthCapture(lens: lens) {
+            settings.isDepthDataDeliveryEnabled = true
+            settings.embedsDepthDataInPhoto = false
+        }
+        
+        // Configure flash
+        settings.flashMode = isFlashOn ? .on : .off
+        
+        return settings
+    }
+    
+    // MARK: - Frame Processing
+    
+    private func processFramesIntoBundle(_ frames: [CapturedFrame]) async throws -> FrameBundle {
+        guard !frames.isEmpty else {
+            throw CameraError.noFramesCaptured
+        }
+        
+        let startTime = captureStartTime ?? Date()
+        let duration = Date().timeIntervalSince(startTime)
+        
+        // Convert captured frames to bundle items
+        var bundleItems: [FrameBundle.Item] = []
+        
+        for frame in frames {
+            // Process depth data if available
+            var depthResult: DepthResult?
+            if let photo = frame.photo, photo.depthData != nil {
+                depthResult = await depthService.processDepthData(from: photo)
+            }
+            
+            let item = FrameBundle.Item(
+                image: frame.image,
+                depth: depthResult?.depthMap,
+                matte: depthResult?.portraitMatte,
+                metadata: frame.metadata
+            )
+            
+            bundleItems.append(item)
+        }
+        
+        // Analyze scene hints
+        let sceneHints = SceneHints.analyze(from: bundleItems)
+        
+        // Create session metadata
+        let sessionMetadata = SessionMetadata(
+            deviceModel: UIDevice.current.model,
+            iosVersion: UIDevice.current.systemVersion,
+            usedMultiCam: lensService.isMultiCamSupported,
+            availableLenses: lensService.availableLenses,
+            captureMode: "burst_v2",
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
+        )
+        
+        return FrameBundle(
+            items: bundleItems,
+            sceneHints: sceneHints,
+            sessionMetadata: sessionMetadata,
+            captureDuration: duration,
+            captureStartTime: startTime
+        )
+    }
+    
+    // MARK: - Face Detection
+    
+    private func setupFaceDetection() {
+        faceDetectionRequest.revision = VNDetectFaceRectanglesRequestRevision3
+    }
+    
+    private func detectFaces(in image: UIImage) async -> Int {
+        guard let cgImage = image.cgImage else { return 0 }
+        
+        return await withCheckedContinuation { continuation in
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            
+            do {
+                try handler.perform([faceDetectionRequest])
+                let faceCount = faceDetectionRequest.results?.count ?? 0
+                continuation.resume(returning: faceCount)
+            } catch {
+                logger.error("Face detection failed: \(error.localizedDescription)")
+                continuation.resume(returning: 0)
+            }
         }
     }
 }
 
 // MARK: - AVCapturePhotoCaptureDelegate
+
 extension CameraService: AVCapturePhotoCaptureDelegate {
     
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        
+    public func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishProcessingPhoto photo: AVCapturePhoto,
+        error: Error?
+    ) {
         if let error = error {
-            DispatchQueue.main.async { [weak self] in
-                self?.captureError = .captureError(error.localizedDescription)
-                self?.isCapturing = false
-            }
+            logger.error("Photo capture failed: \(error.localizedDescription)")
+            captureCompletion?(.failure(.captureFailure))
             return
         }
         
         guard let imageData = photo.fileDataRepresentation(),
               let image = UIImage(data: imageData) else {
-            DispatchQueue.main.async { [weak self] in
-                self?.captureError = .imageProcessingError
-                self?.isCapturing = false
-            }
+            logger.error("Failed to create image from photo data")
+            captureCompletion?(.failure(.imageCreationFailed))
             return
         }
         
-        // Add captured image to burst collection
-        capturedImages.append(image)
-        burstCaptureCount += 1
+        // Determine which lens was used (this would be more sophisticated in practice)
+        let lens = determineLensFromOutput(output)
         
-        // Continue burst or complete
-        if burstCaptureCount < targetBurstCount {
-            // Small delay between captures
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.startBurstCapture()
+        // Create metadata
+        let metadata = FrameMetadata.from(
+            resolvedSettings: photo.resolvedSettings,
+            lens: lens,
+            image: image,
+            depthData: photo.depthData
+        )
+        
+        let capturedFrame = CapturedFrame(
+            image: image,
+            metadata: metadata,
+            photo: photo
+        )
+        
+        capturedFrames.append(capturedFrame)
+        
+        // Update progress
+        captureProgress = Double(capturedFrames.count) / Double(expectedFrameCount)
+        
+        // Check if we've captured all expected frames
+        if capturedFrames.count >= expectedFrameCount {
+            Task {
+                do {
+                    let bundle = try await processFramesIntoBundle(capturedFrames)
+                    captureCompletion?(.success(bundle))
+                } catch {
+                    captureCompletion?(.failure(error as? CameraError ?? .processingFailed))
+                }
             }
-        } else {
-            completeBurstCapture()
         }
+    }
+    
+    private func determineLensFromOutput(_ output: AVCapturePhotoOutput) -> FrameMetadata.Lens {
+        // In multi-cam mode, determine lens from output index
+        if lensService.isMultiCamSupported {
+            if let index = multiCamOutputs.firstIndex(of: output) {
+                let devices = lensService.devicesForMultiCam()
+                if index < devices.count {
+                    let device = devices[index]
+                    return lensService.availableLenses.first { lens in
+                        lensService.device(for: lens) == device
+                    } ?? .wide
+                }
+            }
+        }
+        
+        // In single-cam mode, use current lens
+        return lensService.currentLens
     }
 }
 
-// MARK: - Camera Errors
-enum CameraError: LocalizedError {
-    case deviceNotFound
-    case permissionDenied
-    case captureError(String)
-    case imageProcessingError
+// MARK: - Supporting Types
+
+/// Captured frame with associated data
+private struct CapturedFrame {
+    let image: UIImage
+    let metadata: FrameMetadata
+    let photo: AVCapturePhoto?
+}
+
+/// Delegate for bracket capture in single-cam mode
+private class BracketCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+    private let lens: FrameMetadata.Lens
+    private let completion: (Result<CapturedFrame, CameraError>) -> Void
     
-    var errorDescription: String? {
+    init(lens: FrameMetadata.Lens, completion: @escaping (Result<CapturedFrame, CameraError>) -> Void) {
+        self.lens = lens
+        self.completion = completion
+    }
+    
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishProcessingPhoto photo: AVCapturePhoto,
+        error: Error?
+    ) {
+        if let error = error {
+            completion(.failure(.captureFailure))
+            return
+        }
+        
+        guard let imageData = photo.fileDataRepresentation(),
+              let image = UIImage(data: imageData) else {
+            completion(.failure(.imageCreationFailed))
+            return
+        }
+        
+        let metadata = FrameMetadata.from(
+            resolvedSettings: photo.resolvedSettings,
+            lens: lens,
+            image: image,
+            depthData: photo.depthData
+        )
+        
+        let frame = CapturedFrame(image: image, metadata: metadata, photo: photo)
+        completion(.success(frame))
+    }
+}
+
+// MARK: - Error Types
+
+public enum CameraError: Error, LocalizedError {
+    case permissionDenied
+    case noCamera
+    case sessionSetupFailed
+    case inputNotSupported
+    case outputNotSupported
+    case inputNotConfigured
+    case outputNotConfigured
+    case multiCamNotAvailable
+    case lensNotAvailable
+    case captureInProgress
+    case captureFailure
+    case captureTimeout
+    case noFramesCaptured
+    case imageCreationFailed
+    case processingFailed
+    
+    public var errorDescription: String? {
         switch self {
-        case .deviceNotFound:
-            return "Camera device not found"
         case .permissionDenied:
             return "Camera permission denied"
-        case .captureError(let message):
-            return "Capture error: \(message)"
-        case .imageProcessingError:
-            return "Failed to process captured image"
+        case .noCamera:
+            return "No camera available"
+        case .sessionSetupFailed:
+            return "Failed to setup camera session"
+        case .inputNotSupported:
+            return "Camera input not supported"
+        case .outputNotSupported:
+            return "Camera output not supported"
+        case .inputNotConfigured:
+            return "Camera input not configured"
+        case .outputNotConfigured:
+            return "Camera output not configured"
+        case .multiCamNotAvailable:
+            return "Multi-camera not available"
+        case .lensNotAvailable:
+            return "Requested lens not available"
+        case .captureInProgress:
+            return "Capture already in progress"
+        case .captureFailure:
+            return "Photo capture failed"
+        case .captureTimeout:
+            return "Capture timed out"
+        case .noFramesCaptured:
+            return "No frames were captured"
+        case .imageCreationFailed:
+            return "Failed to create image"
+        case .processingFailed:
+            return "Frame processing failed"
         }
     }
 }

@@ -1,6 +1,6 @@
 //
 //  FrameScoringService.swift
-//  PhotoStop
+//  PhotoStop - Capture v2 with Personalization v1
 //
 //  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
 //
@@ -11,258 +11,267 @@ import Vision
 import UIKit
 import OSLog
 
-/// Service for scoring photo frames using Core ML and personalized preferences
+/// Enhanced frame scoring service that works with FrameBundle architecture and personalization
 @MainActor
-final class FrameScoringService: ObservableObject {
+public final class FrameScoringService: ObservableObject {
     
     static let shared = FrameScoringService()
     
-    @Published var isModelLoaded = false
-    @Published var modelVersion: String = "Unknown"
-    @Published var isProcessing = false
-    @Published var scoringError: ScoringError?
+    // MARK: - Published Properties
     
-    private var model: MLModel?
-    private var visionModel: VNCoreMLModel?
+    @Published public var isProcessing = false
+    @Published public var lastError: ScoringError?
+    @Published public var modelVersion: String = "1.0.0"
+    
+    // MARK: - Private Properties
+    
     private let logger = Logger(subsystem: "com.servesys.photostop", category: "FrameScoring")
-    private let modelVersioning = MLModelVersioning.shared
-    private let personalizedScoring = PersonalizedScoringService.shared
+    private let feedbackService = IQAFeedbackService.shared
+    private let personalizedScoring = PersonalizedScoring.shared
+    
+    // NEW: Personalization integration
+    private let personalizationEngine = PersonalizationEngine.shared
+    
+    // Core ML model (loaded lazily)
+    private var coreMLModel: MLModel?
+    private var isModelLoaded = false
+    
+    // Vision requests for quality assessment
+    private let sharpnessRequest = VNClassifyImageRequest()
+    private let aestheticsRequest = VNClassifyImageRequest()
+    
+    // MARK: - Initialization
     
     private init() {
-        Task {
-            await loadModel()
-            await checkForModelUpdates()
-        }
+        setupVisionRequests()
+        loadCoreMLModel()
     }
     
     // MARK: - Public Interface
     
-    /// Score a single frame for quality assessment
-    func scoreFrame(_ image: UIImage) async -> FrameScore {
-        let startTime = CFAbsoluteTimeGetCurrent()
+    /// Score all frames in a bundle and select the best one
+    public func scoreFrameBundle(_ bundle: FrameBundle) async throws -> FrameBundle {
         isProcessing = true
-        scoringError = nil
+        lastError = nil
         
         defer {
             isProcessing = false
         }
         
-        // Get base score from Core ML model
-        let baseScore = await getCoreMLScore(for: image)
+        logger.info("Scoring bundle with \(bundle.frameCount) frames")
         
-        // Apply personalized scoring if enabled
-        let personalizedScore = personalizedScoring.personalizeScore(baseScore, for: image)
+        var scoredBundle = bundle
+        var baseScores: [Float] = []
+        var personalizedScores: [Float] = []
         
-        let processingTime = CFAbsoluteTimeGetCurrent() - startTime
-        
-        let frameScore = FrameScore(
-            score: personalizedScore,
-            confidence: 0.85, // Would come from model in production
-            processingTime: processingTime,
-            features: extractFeatures(from: image),
-            modelVersion: modelVersion,
-            isPersonalized: personalizedScoring.isEnabled
-        )
-        
-        logger.debug("Frame scored: base=\(baseScore), personalized=\(personalizedScore), time=\(processingTime)s")
-        
-        return frameScore
-    }
-    
-    /// Score a single image (legacy method for compatibility)
-    func scoreImage(_ image: UIImage) async -> FrameScore {
-        return await scoreFrame(image)
-    }
-    
-    /// Score multiple frames and return them sorted by quality
-    func scoreFrames(_ images: [UIImage]) async -> [FrameScore] {
-        let scores = await withTaskGroup(of: (Int, FrameScore).self, returning: [FrameScore].self) { group in
-            for (index, image) in images.enumerated() {
-                group.addTask {
-                    let score = await self.scoreFrame(image)
-                    return (index, score)
-                }
-            }
+        // Score each frame
+        for item in bundle.items {
+            let baseScore = try await scoreFrameBase(item, sceneHints: bundle.sceneHints)
+            baseScores.append(baseScore)
             
-            var results: [(Int, FrameScore)] = []
-            for await result in group {
-                results.append(result)
-            }
-            
-            // Sort by original index to maintain order
-            results.sort { $0.0 < $1.0 }
-            return results.map { $0.1 }
-        }
-        
-        logger.info("Scored \(images.count) frames, best score: \(scores.max(by: { $0.score < $1.score })?.score ?? 0.0)")
-        
-        return scores
-    }
-    
-    /// Score multiple images (legacy method for compatibility)
-    func scoreImages(_ images: [UIImage]) async -> [FrameScore] {
-        return await scoreFrames(images)
-    }
-    
-    /// Select the best frame from a collection with feedback integration
-    func selectBestFrame(
-        from images: [UIImage],
-        with metadata: [IQAMeta]? = nil
-    ) async -> (bestImage: UIImage, bestIndex: Int, allScores: [FrameScore]) {
-        let scores = await scoreFrames(images)
-        
-        guard let bestIndex = scores.indices.max(by: { scores[$0].score < scores[$1].score }) else {
-            logger.warning("No frames to score, returning first image")
-            return (images[0], 0, scores)
-        }
-        
-        let bestImage = images[bestIndex]
-        
-        // Store frame comparison for ML feedback if enabled
-        if IQAFeedbackService.shared.isEnabled {
-            let selectedMeta = metadata?[bestIndex] ?? IQAMeta(
-                meanLuma: bestImage.meanLuminance(),
-                imageWidth: Int(bestImage.size.width),
-                imageHeight: Int(bestImage.size.height)
+            // Apply personalization bias if enabled
+            let features = PersonalizationFeatures.from(item: item)
+            let personalizedScore = personalizationEngine.applyBias(
+                baseScore: baseScore,
+                features: features,
+                lens: item.metadata.lens
             )
-            
-            let rejectedImages = images.enumerated().compactMap { index, image in
-                index != bestIndex ? image : nil
-            }
-            
-            let rejectedMetas = metadata?.enumerated().compactMap { index, meta in
-                index != bestIndex ? meta : nil
-            } ?? rejectedImages.map { image in
-                IQAMeta(
-                    meanLuma: image.meanLuminance(),
-                    imageWidth: Int(image.size.width),
-                    imageHeight: Int(image.size.height)
-                )
-            }
-            
-            IQAFeedbackService.shared.saveFrameComparison(
-                selectedImage: bestImage,
-                rejectedImages: rejectedImages,
-                selectedMeta: selectedMeta,
-                rejectedMetas: rejectedMetas
-            )
+            personalizedScores.append(personalizedScore)
         }
         
-        logger.info("Selected frame \(bestIndex) with score \(scores[bestIndex].score)")
+        // Update bundle with both base and personalized scores
+        scoredBundle.updateQualityScores(personalizedScores)
         
-        return (bestImage, bestIndex, scores)
-    }
-    
-    /// Process user feedback on frame selection
-    func processFeedback(
-        selectedImage: UIImage,
-        userRating: Bool,
-        reason: RatingReason? = nil,
-        feedback: String? = nil,
-        modelScore: Float
-    ) {
-        let userScore: Float = userRating ? 1.0 : 0.0
-        
-        // Update personalized preferences
-        personalizedScoring.updatePreferences(
-            image: selectedImage,
-            userRating: userScore,
-            modelScore: modelScore
+        // Apply legacy personalized scoring adjustments (if any)
+        let legacyAdjustedScores = await personalizedScoring.adjustScores(
+            personalizedScores,
+            for: bundle.items,
+            sceneHints: bundle.sceneHints
         )
         
-        // Save feedback for ML training
-        let meta = IQAMeta(
-            meanLuma: selectedImage.meanLuminance(),
-            imageWidth: Int(selectedImage.size.width),
-            imageHeight: Int(selectedImage.size.height)
+        scoredBundle.updateQualityScores(legacyAdjustedScores)
+        
+        // Select best frame
+        scoredBundle.selectBestItem()
+        
+        let bestScore = legacyAdjustedScores.max() ?? 0.0
+        let bestIndex = legacyAdjustedScores.firstIndex(of: bestScore) ?? 0
+        
+        logger.info("Scoring complete - Best score: \(String(format: "%.3f", bestScore)) (base: \(String(format: "%.3f", baseScores[bestIndex])))")
+        
+        return scoredBundle
+    }
+    
+    /// Score a single frame with comprehensive quality assessment (base score only)
+    private func scoreFrameBase(
+        _ item: FrameBundle.Item,
+        sceneHints: SceneHints
+    ) async throws -> Float {
+        
+        let image = item.image
+        let metadata = item.metadata
+        
+        // Get base quality scores
+        let technicalScore = await assessTechnicalQuality(image, metadata: metadata)
+        let aestheticScore = await assessAestheticQuality(image)
+        let contextualScore = assessContextualQuality(item, sceneHints: sceneHints)
+        
+        // Use Core ML model if available
+        var mlScore: Float = 0.0
+        if let model = coreMLModel {
+            mlScore = await scoreByCoreML(image, model: model) ?? 0.0
+        }
+        
+        // Combine scores with weights
+        let weights = getScoreWeights(for: sceneHints.sceneType)
+        
+        let baseScore = (
+            technicalScore * weights.technical +
+            aestheticScore * weights.aesthetic +
+            contextualScore * weights.contextual +
+            mlScore * weights.ml
         )
         
-        IQAFeedbackService.shared.saveRating(
-            image: selectedImage,
-            score: userScore,
-            meta: meta,
-            reason: reason,
-            feedback: feedback
+        logger.debug("Frame base score: technical=\(String(format: "%.3f", technicalScore)), aesthetic=\(String(format: "%.3f", aestheticScore)), contextual=\(String(format: "%.3f", contextualScore)), ml=\(String(format: "%.3f", mlScore)), base=\(String(format: "%.3f", baseScore))")
+        
+        return min(max(baseScore, 0.0), 1.0)
+    }
+    
+    /// Score a single frame with personalization applied (public interface)
+    public func scoreFrame(
+        _ item: FrameBundle.Item,
+        sceneHints: SceneHints
+    ) async throws -> Float {
+        
+        let baseScore = try await scoreFrameBase(item, sceneHints: sceneHints)
+        
+        // Apply personalization bias
+        let features = PersonalizationFeatures.from(item: item)
+        let personalizedScore = personalizationEngine.applyBias(
+            baseScore: baseScore,
+            features: features,
+            lens: item.metadata.lens
         )
         
-        logger.info("Processed user feedback: rating=\(userRating), reason=\(reason?.rawValue ?? "none")")
+        return personalizedScore
     }
     
-    // MARK: - Model Management
-    
-    func checkForModelUpdates() async {
-        await modelVersioning.checkForModelUpdates()
+    /// Get scoring explanation for a frame
+    public func getScoringExplanation(
+        for item: FrameBundle.Item,
+        sceneHints: SceneHints
+    ) async -> ScoringExplanation {
         
-        if modelVersioning.availableUpdate != nil {
-            logger.info("Model update available: \(modelVersioning.currentModelVersion) -> \(modelVersioning.availableUpdate!)")
-        }
-    }
-    
-    func updateModel() async -> Bool {
-        let success = await modelVersioning.downloadAndInstallUpdate()
+        let technicalScore = await assessTechnicalQuality(item.image, metadata: item.metadata)
+        let aestheticScore = await assessAestheticQuality(item.image)
+        let contextualScore = assessContextualQuality(item, sceneHints: sceneHints)
         
-        if success {
-            await loadModel()
-            logger.info("Model updated successfully")
+        // Get personalization info
+        let features = PersonalizationFeatures.from(item: item)
+        let baseScore = (technicalScore + aestheticScore + contextualScore) / 3.0
+        let personalizedScore = personalizationEngine.applyBias(
+            baseScore: baseScore,
+            features: features,
+            lens: item.metadata.lens
+        )
+        
+        let personalizationAdjustment = personalizedScore - baseScore
+        
+        return ScoringExplanation(
+            technicalScore: technicalScore,
+            aestheticScore: aestheticScore,
+            contextualScore: contextualScore,
+            baseScore: baseScore,
+            personalizedScore: personalizedScore,
+            personalizationAdjustment: personalizationAdjustment,
+            lens: item.metadata.lens,
+            sceneType: sceneHints.sceneType,
+            factors: generateScoringFactors(item, sceneHints: sceneHints),
+            personalizationEnabled: personalizationEngine.currentProfile().enabled
+        )
+    }
+    
+    // MARK: - Technical Quality Assessment
+    
+    private func assessTechnicalQuality(
+        _ image: UIImage,
+        metadata: FrameMetadata
+    ) async -> Float {
+        
+        var score: Float = 0.5 // Base score
+        
+        // Sharpness/motion blur assessment
+        let motionScore = 1.0 - metadata.motionScore // Invert (less motion = better)
+        score += motionScore * 0.3
+        
+        // Exposure assessment
+        let exposureScore = assessExposureQuality(metadata)
+        score += exposureScore * 0.2
+        
+        // ISO noise assessment
+        let noiseScore = assessNoiseLevel(metadata)
+        score += noiseScore * 0.2
+        
+        // Depth quality (if available)
+        if metadata.hasDepth {
+            let depthScore = metadata.depthQuality
+            score += depthScore * 0.15
         }
         
-        return success
+        // Vision-based sharpness detection
+        let visionSharpness = await assessSharpnessWithVision(image)
+        score += visionSharpness * 0.15
+        
+        return min(max(score, 0.0), 1.0)
     }
     
-    // MARK: - Private Methods
-    
-    private func loadModel() async {
-        do {
-            model = try modelVersioning.getCurrentModel()
-            
-            // Create Vision model for easier image processing
-            if let model = model {
-                visionModel = try VNCoreMLModel(for: model)
-            }
-            
-            modelVersion = modelVersioning.currentModelVersion
-            isModelLoaded = true
-            
-            logger.info("Loaded FrameScoring model version \(modelVersion)")
-            
-        } catch {
-            logger.error("Failed to load FrameScoring model: \(error.localizedDescription)")
-            isModelLoaded = false
-            scoringError = .modelLoadFailed
-            
-            // Fall back to algorithmic scoring
-            logger.info("Falling back to algorithmic frame scoring")
+    private func assessExposureQuality(_ metadata: FrameMetadata) -> Float {
+        let luma = metadata.meanLuma
+        
+        // Optimal exposure is around 0.4-0.6 luminance
+        if luma >= 0.4 && luma <= 0.6 {
+            return 1.0
+        } else if luma >= 0.2 && luma <= 0.8 {
+            return 0.7
+        } else if luma >= 0.1 && luma <= 0.9 {
+            return 0.4
+        } else {
+            return 0.1 // Very under/overexposed
         }
     }
     
-    private func getCoreMLScore(for image: UIImage) async -> Float {
-        guard let visionModel = visionModel else {
-            // Fallback to algorithmic scoring
-            return getAlgorithmicScore(for: image)
+    private func assessNoiseLevel(_ metadata: FrameMetadata) -> Float {
+        let iso = metadata.iso
+        
+        // Lower ISO = less noise
+        if iso <= 400 {
+            return 1.0
+        } else if iso <= 800 {
+            return 0.8
+        } else if iso <= 1600 {
+            return 0.6
+        } else if iso <= 3200 {
+            return 0.4
+        } else {
+            return 0.2
         }
+    }
+    
+    private func assessSharpnessWithVision(_ image: UIImage) async -> Float {
+        guard let cgImage = image.cgImage else { return 0.5 }
         
         return await withCheckedContinuation { continuation in
-            let request = VNCoreMLRequest(model: visionModel) { request, error in
+            let request = VNClassifyImageRequest { request, error in
                 if let error = error {
-                    self.logger.error("Vision request failed: \(error.localizedDescription)")
-                    continuation.resume(returning: self.getAlgorithmicScore(for: image))
+                    self.logger.error("Vision sharpness assessment failed: \(error.localizedDescription)")
+                    continuation.resume(returning: 0.5)
                     return
                 }
                 
-                guard let results = request.results as? [VNCoreMLFeatureValueObservation],
-                      let scoreObservation = results.first,
-                      let scoreValue = scoreObservation.featureValue.doubleValue else {
-                    self.logger.warning("Invalid model output, using algorithmic score")
-                    continuation.resume(returning: self.getAlgorithmicScore(for: image))
-                    return
-                }
-                
-                continuation.resume(returning: Float(scoreValue))
-            }
-            
-            guard let cgImage = image.cgImage else {
-                continuation.resume(returning: getAlgorithmicScore(for: image))
-                return
+                // This would use a custom sharpness classifier
+                // For now, return a placeholder based on image analysis
+                let sharpness = self.estimateSharpnessFromImage(cgImage)
+                continuation.resume(returning: sharpness)
             }
             
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
@@ -270,104 +279,331 @@ final class FrameScoringService: ObservableObject {
             do {
                 try handler.perform([request])
             } catch {
-                logger.error("Failed to perform vision request: \(error.localizedDescription)")
-                continuation.resume(returning: getAlgorithmicScore(for: image))
+                self.logger.error("Vision request failed: \(error.localizedDescription)")
+                continuation.resume(returning: 0.5)
             }
         }
     }
     
-    private func getAlgorithmicScore(for image: UIImage) -> Float {
-        // Fallback algorithmic scoring based on image analysis
-        let features = extractFeatures(from: image)
+    private func estimateSharpnessFromImage(_ cgImage: CGImage) -> Float {
+        // Simplified sharpness estimation using edge detection
+        let width = cgImage.width
+        let height = cgImage.height
         
-        // Weighted combination of features
-        let exposureScore = 1.0 - abs(features.meanLuminance - 0.5) * 2.0 // Prefer mid-range exposure
-        let sharpnessScore = features.edgeStrength
-        let contrastScore = features.contrast
-        let noiseScore = 1.0 - features.noise // Lower noise is better
+        // Sample a smaller region for performance
+        let sampleWidth = min(width, 256)
+        let sampleHeight = min(height, 256)
         
-        let algorithmicScore = (
-            exposureScore * 0.3 +
-            sharpnessScore * 0.4 +
-            contrastScore * 0.2 +
-            noiseScore * 0.1
-        )
-        
-        return Float(max(0.0, min(1.0, algorithmicScore)))
-    }
-    
-    private func extractFeatures(from image: UIImage) -> FrameScore.Features {
-        guard let cgImage = image.cgImage else {
-            return FrameScore.Features(
-                meanLuminance: 0.5,
-                contrast: 0.5,
-                sharpness: 0.5,
-                edgeStrength: 0.5,
-                noise: 0.5,
-                colorfulness: 0.5
-            )
+        guard let context = CGContext(
+            data: nil,
+            width: sampleWidth,
+            height: sampleHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: sampleWidth,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            return 0.5
         }
         
-        // Basic feature extraction (simplified for demo)
-        let meanLuminance = image.meanLuminance()
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: sampleWidth, height: sampleHeight))
         
-        // Placeholder values - in production, implement proper feature extraction
-        return FrameScore.Features(
-            meanLuminance: meanLuminance,
-            contrast: 0.6, // Would calculate actual contrast
-            sharpness: 0.7, // Would calculate actual sharpness
-            edgeStrength: 0.65, // Would calculate actual edge strength
-            noise: 0.3, // Would calculate actual noise level
-            colorfulness: 0.8 // Would calculate actual colorfulness
+        guard let data = context.data else { return 0.5 }
+        
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
+        var edgeStrength: Float = 0.0
+        
+        // Simple Sobel edge detection
+        for y in 1..<(sampleHeight - 1) {
+            for x in 1..<(sampleWidth - 1) {
+                let idx = y * sampleWidth + x
+                
+                let gx = Float(pixels[idx - sampleWidth - 1]) * -1 +
+                         Float(pixels[idx - sampleWidth + 1]) * 1 +
+                         Float(pixels[idx - 1]) * -2 +
+                         Float(pixels[idx + 1]) * 2 +
+                         Float(pixels[idx + sampleWidth - 1]) * -1 +
+                         Float(pixels[idx + sampleWidth + 1]) * 1
+                
+                let gy = Float(pixels[idx - sampleWidth - 1]) * -1 +
+                         Float(pixels[idx - sampleWidth]) * -2 +
+                         Float(pixels[idx - sampleWidth + 1]) * -1 +
+                         Float(pixels[idx + sampleWidth - 1]) * 1 +
+                         Float(pixels[idx + sampleWidth]) * 2 +
+                         Float(pixels[idx + sampleWidth + 1]) * 1
+                
+                edgeStrength += sqrt(gx * gx + gy * gy)
+            }
+        }
+        
+        // Normalize edge strength
+        let avgEdgeStrength = edgeStrength / Float(sampleWidth * sampleHeight)
+        return min(avgEdgeStrength / 100.0, 1.0) // Normalize to 0-1 range
+    }
+    
+    // MARK: - Aesthetic Quality Assessment
+    
+    private func assessAestheticQuality(_ image: UIImage) async -> Float {
+        guard let cgImage = image.cgImage else { return 0.5 }
+        
+        // Composition analysis
+        let compositionScore = assessComposition(cgImage)
+        
+        // Color harmony analysis
+        let colorScore = assessColorHarmony(cgImage)
+        
+        // Contrast analysis
+        let contrastScore = assessContrast(cgImage)
+        
+        // Vision-based aesthetic assessment (if available)
+        let visionScore = await assessAestheticsWithVision(image)
+        
+        // Combine aesthetic factors
+        let aestheticScore = (
+            compositionScore * 0.3 +
+            colorScore * 0.25 +
+            contrastScore * 0.25 +
+            visionScore * 0.2
         )
+        
+        return min(max(aestheticScore, 0.0), 1.0)
+    }
+    
+    private func assessComposition(_ cgImage: CGImage) -> Float {
+        // Rule of thirds assessment
+        return 0.6 // Placeholder
+    }
+    
+    private func assessColorHarmony(_ cgImage: CGImage) -> Float {
+        return 0.6 // Placeholder
+    }
+    
+    private func assessContrast(_ cgImage: CGImage) -> Float {
+        return 0.6 // Placeholder
+    }
+    
+    private func assessAestheticsWithVision(_ image: UIImage) async -> Float {
+        return 0.6 // Placeholder
+    }
+    
+    // MARK: - Contextual Quality Assessment
+    
+    private func assessContextualQuality(
+        _ item: FrameBundle.Item,
+        sceneHints: SceneHints
+    ) -> Float {
+        
+        var score: Float = 0.5
+        let metadata = item.metadata
+        
+        // Scene-specific scoring
+        switch sceneHints.sceneType {
+        case .portrait:
+            if metadata.hasDepth && metadata.depthQuality > 0.5 {
+                score += 0.3
+            }
+            if metadata.lens != .ultraWide {
+                score += 0.2
+            }
+            
+        case .landscape:
+            if metadata.lens == .ultraWide || metadata.lens == .wide {
+                score += 0.2
+            }
+            if !metadata.isLowLight {
+                score += 0.2
+            }
+            
+        case .lowLight:
+            if metadata.iso <= 1600 {
+                score += 0.3
+            }
+            if metadata.meanLuma > 0.2 {
+                score += 0.2
+            }
+            
+        case .macro:
+            if metadata.motionScore < 0.3 {
+                score += 0.3
+            }
+            if metadata.lens == .wide {
+                score += 0.2
+            }
+            
+        case .action:
+            if metadata.shutterMS < 8.0 {
+                score += 0.3
+            }
+            if metadata.motionScore < 0.4 {
+                score += 0.2
+            }
+            
+        case .general:
+            if !metadata.hasMotionBlur {
+                score += 0.2
+            }
+            if !metadata.isLowLight {
+                score += 0.2
+            }
+        }
+        
+        return min(max(score, 0.0), 1.0)
+    }
+    
+    // MARK: - Core ML Scoring
+    
+    private func scoreByCoreML(_ image: UIImage, model: MLModel) async -> Float? {
+        // Core ML implementation placeholder
+        return nil
+    }
+    
+    // MARK: - Model Management
+    
+    private func loadCoreMLModel() {
+        // Model loading implementation
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func setupVisionRequests() {
+        sharpnessRequest.revision = VNClassifyImageRequestRevision1
+        aestheticsRequest.revision = VNClassifyImageRequestRevision1
+    }
+    
+    private func getScoreWeights(for sceneType: SceneHints.SceneType) -> ScoreWeights {
+        switch sceneType {
+        case .portrait:
+            return ScoreWeights(technical: 0.3, aesthetic: 0.4, contextual: 0.2, ml: 0.1)
+        case .landscape:
+            return ScoreWeights(technical: 0.2, aesthetic: 0.5, contextual: 0.2, ml: 0.1)
+        case .lowLight:
+            return ScoreWeights(technical: 0.5, aesthetic: 0.2, contextual: 0.2, ml: 0.1)
+        case .macro:
+            return ScoreWeights(technical: 0.4, aesthetic: 0.3, contextual: 0.2, ml: 0.1)
+        case .action:
+            return ScoreWeights(technical: 0.6, aesthetic: 0.1, contextual: 0.2, ml: 0.1)
+        case .general:
+            return ScoreWeights(technical: 0.3, aesthetic: 0.3, contextual: 0.3, ml: 0.1)
+        }
+    }
+    
+    private func generateScoringFactors(
+        _ item: FrameBundle.Item,
+        sceneHints: SceneHints
+    ) -> [String] {
+        
+        var factors: [String] = []
+        let metadata = item.metadata
+        
+        if metadata.motionScore < 0.3 {
+            factors.append("Sharp image")
+        } else if metadata.motionScore > 0.7 {
+            factors.append("Motion blur detected")
+        }
+        
+        if metadata.isLowLight {
+            factors.append("Low light conditions")
+        }
+        
+        if metadata.hasDepth && metadata.depthQuality > 0.5 {
+            factors.append("Good depth data")
+        }
+        
+        factors.append("Captured with \(metadata.lens.displayName) lens")
+        factors.append("Scene type: \(sceneHints.sceneType.displayName)")
+        
+        // Add personalization factors
+        let profile = personalizationEngine.currentProfile()
+        if profile.enabled && !profile.isNeutral {
+            factors.append("Personalized for your preferences")
+        }
+        
+        return factors
     }
 }
 
-// MARK: - Error Types
+// MARK: - Supporting Types
 
-enum ScoringError: Error, LocalizedError {
-    case modelLoadFailed
-    case processingFailed
-    case invalidImage
+private struct ScoreWeights {
+    let technical: Float
+    let aesthetic: Float
+    let contextual: Float
+    let ml: Float
+}
+
+public struct ScoringExplanation {
+    public let technicalScore: Float
+    public let aestheticScore: Float
+    public let contextualScore: Float
+    public let baseScore: Float
+    public let personalizedScore: Float
+    public let personalizationAdjustment: Float
+    public let lens: FrameMetadata.Lens
+    public let sceneType: SceneHints.SceneType
+    public let factors: [String]
+    public let personalizationEnabled: Bool
     
-    var errorDescription: String? {
+    public var overallScore: Float {
+        return personalizedScore
+    }
+    
+    public var summary: String {
+        let scoreText = String(format: "%.1f", overallScore * 100)
+        var summary = "Quality Score: \(scoreText)% (\(sceneType.displayName) with \(lens.displayName) lens)"
+        
+        if personalizationEnabled && abs(personalizationAdjustment) > 0.01 {
+            let adjustmentText = personalizationAdjustment > 0 ? "+" : ""
+            summary += " [Personalized: \(adjustmentText)\(String(format: "%.1f", personalizationAdjustment * 100))%]"
+        }
+        
+        return summary
+    }
+    
+    public var detailedBreakdown: String {
+        let components = [
+            "Technical: \(String(format: "%.1f%%", technicalScore * 100))",
+            "Aesthetic: \(String(format: "%.1f%%", aestheticScore * 100))",
+            "Contextual: \(String(format: "%.1f%%", contextualScore * 100))"
+        ]
+        
+        var breakdown = "Base Score: \(String(format: "%.1f%%", baseScore * 100)) (\(components.joined(separator: ", ")))"
+        
+        if personalizationEnabled {
+            if abs(personalizationAdjustment) > 0.01 {
+                let adjustmentText = personalizationAdjustment > 0 ? "+" : ""
+                breakdown += "\nPersonalization: \(adjustmentText)\(String(format: "%.1f%%", personalizationAdjustment * 100))"
+                breakdown += "\nFinal Score: \(String(format: "%.1f%%", personalizedScore * 100))"
+            } else {
+                breakdown += "\nPersonalization: No adjustment needed"
+            }
+        } else {
+            breakdown += "\nPersonalization: Disabled"
+        }
+        
+        return breakdown
+    }
+}
+
+public enum ScoringError: Error, LocalizedError {
+    case modelLoadFailed
+    case imageProcessingFailed
+    case visionRequestFailed
+    case invalidInput
+    case personalizationFailed
+    
+    public var errorDescription: String? {
         switch self {
         case .modelLoadFailed:
             return "Failed to load ML model"
-        case .processingFailed:
+        case .imageProcessingFailed:
             return "Image processing failed"
-        case .invalidImage:
-            return "Invalid image format"
+        case .visionRequestFailed:
+            return "Vision analysis failed"
+        case .invalidInput:
+            return "Invalid input data"
+        case .personalizationFailed:
+            return "Personalization processing failed"
         }
-    }
-}
-
-// MARK: - FrameScore Extensions
-
-extension FrameScore {
-    /// Create a fallback score using algorithmic analysis
-    static func createFallbackScore(for image: UIImage) -> FrameScore {
-        let meanLuminance = image.meanLuminance()
-        
-        // Simple algorithmic scoring
-        let exposureScore = 1.0 - abs(meanLuminance - 0.5) * 2.0
-        let algorithmicScore = Float(max(0.0, min(1.0, exposureScore)))
-        
-        return FrameScore(
-            score: algorithmicScore,
-            confidence: 0.6, // Lower confidence for algorithmic scoring
-            processingTime: 0.01, // Fast algorithmic processing
-            features: Features(
-                meanLuminance: meanLuminance,
-                contrast: 0.5,
-                sharpness: 0.5,
-                edgeStrength: 0.5,
-                noise: 0.3,
-                colorfulness: 0.6
-            ),
-            modelVersion: "algorithmic_fallback",
-            isPersonalized: false
-        )
     }
 }
 

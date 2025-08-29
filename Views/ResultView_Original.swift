@@ -6,409 +6,530 @@
 //
 
 import SwiftUI
+import Photos
 
-/// View for displaying enhanced image results with save/share options
+/// View for displaying enhanced images with save and share options
 struct ResultView: View {
-    let image: UIImage
-    let originalImage: UIImage?
+    let originalImage: UIImage
+    let enhancedImage: UIImage
+    let provider: String
+    let processingTime: TimeInterval
+    let metadata: [String: String]
     
-    @StateObject private var editViewModel = EditViewModel()
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var subscriptionViewModel = SubscriptionViewModel()
     
+    @State private var showingBeforeAfter = false
+    @State private var showingSaveAlert = false
     @State private var showingShareSheet = false
-    @State private var showingEditPrompt = false
-    @State private var showingComparison = false
-    @State private var saveSuccess = false
+    @State private var showingPaywall = false
+    @State private var showingSocialShare = false
     @State private var saveError: String?
+    @State private var shareSourceView: UIView?
+    
+    // Social sharing
+    private let socialShareService = SocialShareService.shared
     
     var body: some View {
         NavigationView {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Image display area
-                    imageDisplayArea
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Enhanced Image Display
+                    imageDisplaySection
                     
-                    // Controls
-                    controlsArea
+                    // Before/After Toggle
+                    beforeAfterToggleSection
+                    
+                    // Processing Info
+                    processingInfoSection
+                    
+                    // Action Buttons
+                    actionButtonsSection
+                    
+                    // Social Sharing Buttons
+                    socialSharingSection
+                    
+                    // Metadata (if available)
+                    if !metadata.isEmpty {
+                        metadataSection
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            .navigationTitle("Enhanced Photo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button("Save to Photos") {
+                            saveToPhotos()
+                        }
+                        
+                        Button("Share") {
+                            showingShareSheet = true
+                        }
+                        
+                        Button("Edit Again") {
+                            // Navigate back to edit view
+                            dismiss()
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
         }
-        .sheet(isPresented: $showingShareSheet) {
-            ShareSheet(items: [image])
-        }
-        .sheet(isPresented: $showingEditPrompt) {
-            EditPromptView(image: image, editViewModel: editViewModel)
-        }
-        .alert("Saved!", isPresented: $saveSuccess) {
+        .alert("Photo Saved", isPresented: $showingSaveAlert) {
             Button("OK") { }
         } message: {
-            Text("Image saved to Photos successfully")
+            Text("Your enhanced photo has been saved to Photos.")
         }
         .alert("Save Error", isPresented: .constant(saveError != nil)) {
             Button("OK") {
                 saveError = nil
             }
         } message: {
-            if let error = saveError {
-                Text(error)
-            }
+            Text(saveError ?? "")
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(items: [enhancedImage, "Enhanced with PhotoStop ✨"])
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .general)
+        }
+        .actionSheet(isPresented: $showingSocialShare) {
+            socialShareActionSheet
         }
     }
     
-    // MARK: - Image Display Area
-    private var imageDisplayArea: some View {
-        GeometryReader { geometry in
-            ZStack {
-                if showingComparison, let original = originalImage {
-                    // Before/After comparison
-                    HStack(spacing: 2) {
-                        // Original image
-                        VStack {
-                            Text("Original")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                                .padding(.bottom, 4)
-                            
-                            Image(uiImage: original)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: geometry.size.width / 2 - 1)
-                        }
-                        
-                        // Enhanced image
-                        VStack {
-                            Text("Enhanced")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                                .padding(.bottom, 4)
-                            
-                            Image(uiImage: image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: geometry.size.width / 2 - 1)
-                        }
-                    }
-                } else {
-                    // Single enhanced image
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showingComparison.toggle()
-            }
-        }
-    }
+    // MARK: - Image Display Section
     
-    // MARK: - Controls Area
-    private var controlsArea: some View {
+    private var imageDisplaySection: some View {
         VStack(spacing: 16) {
-            // Comparison toggle (if original available)
-            if originalImage != nil {
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        showingComparison.toggle()
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: showingComparison ? "eye.slash" : "eye")
-                        Text(showingComparison ? "Hide Comparison" : "Show Comparison")
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.2))
-                    .clipShape(Capsule())
+            // Main Image
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(UIColor.secondarySystemBackground))
+                    .aspectRatio(enhancedImage.size.width / enhancedImage.size.height, contentMode: .fit)
+                
+                Image(uiImage: showingBeforeAfter ? originalImage : enhancedImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .animation(.easeInOut(duration: 0.3), value: showingBeforeAfter)
+            }
+            .onTapGesture {
+                withAnimation {
+                    showingBeforeAfter.toggle()
                 }
             }
             
-            // Action buttons
-            HStack(spacing: 20) {
-                // Save button
-                Button(action: saveToPhotos) {
-                    VStack {
-                        Image(systemName: "square.and.arrow.down")
-                            .font(.title2)
-                        Text("Save")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Color.blue)
-                    .clipShape(Circle())
-                }
-                
-                // Share button
-                Button(action: {
-                    showingShareSheet = true
-                }) {
-                    VStack {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.title2)
-                        Text("Share")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Color.green)
-                    .clipShape(Circle())
-                }
-                
-                // Edit more button
-                Button(action: {
-                    showingEditPrompt = true
-                }) {
-                    VStack {
-                        Image(systemName: "wand.and.stars")
-                            .font(.title2)
-                        Text("Edit More")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Color.purple)
-                    .clipShape(Circle())
-                }
-                
-                // Close button
-                Button(action: {
-                    dismiss()
-                }) {
-                    VStack {
-                        Image(systemName: "xmark")
-                            .font(.title2)
-                        Text("Close")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Color.gray)
-                    .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal)
-        }
-        .padding()
-        .background(Color.black.opacity(0.8))
-    }
-    
-    // MARK: - Helper Methods
-    private func saveToPhotos() {
-        Task {
-            let storageService = StorageService()
-            let success = await storageService.saveToPhotos(image)
-            
-            await MainActor.run {
-                if success {
-                    saveSuccess = true
-                } else {
-                    saveError = "Failed to save image to Photos. Please check permissions."
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Edit Prompt View
-struct EditPromptView: View {
-    let image: UIImage
-    @ObservedObject var editViewModel: EditViewModel
-    @Environment(\.dismiss) private var dismiss
-    
-    @State private var selectedCategory: PromptCategory = .general
-    @State private var customPrompt = ""
-    @State private var showingCustomInput = false
-    
-    var body: some View {
-        NavigationView {
-            VStack {
-                // Category picker
-                Picker("Category", selection: $selectedCategory) {
-                    ForEach(PromptCategory.allCases, id: \.self) { category in
-                        Label(category.rawValue, systemImage: category.icon)
-                            .tag(category)
-                    }
-                }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding()
-                
-                // Prompts list
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(editViewModel.getPromptsForCategory(selectedCategory)) { prompt in
-                            PromptCard(prompt: prompt) {
-                                Task {
-                                    await editViewModel.applyPrompt(prompt, to: image)
-                                    if editViewModel.editedImage != nil {
-                                        dismiss()
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Custom prompt button
-                        if selectedCategory == .custom {
-                            Button(action: {
-                                showingCustomInput = true
-                            }) {
-                                HStack {
-                                    Image(systemName: "plus.circle")
-                                    Text("Add Custom Prompt")
-                                }
-                                .foregroundColor(.blue)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Color.blue.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                        }
-                    }
-                    .padding()
+            // Image Info
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(showingBeforeAfter ? "Original" : "Enhanced")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Text("Tap to compare")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
                 
                 Spacer()
-            }
-            .navigationTitle("Edit with AI")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(Int(enhancedImage.size.width)) × \(Int(enhancedImage.size.height))")
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                    
+                    Text("Enhanced by \(provider)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
         }
-        .sheet(isPresented: $showingCustomInput) {
-            CustomPromptInputView(
-                prompt: $customPrompt,
-                onApply: {
-                    editViewModel.customPrompt = customPrompt
-                    Task {
-                        await editViewModel.applyCustomPrompt(to: image)
-                        if editViewModel.editedImage != nil {
-                            dismiss()
-                        }
-                    }
+    }
+    
+    // MARK: - Before/After Toggle Section
+    
+    private var beforeAfterToggleSection: some View {
+        HStack(spacing: 16) {
+            Button(action: {
+                withAnimation {
+                    showingBeforeAfter = false
                 }
-            )
+            }) {
+                HStack {
+                    Image(systemName: "sparkles")
+                        .font(.caption)
+                    Text("Enhanced")
+                        .font(.subheadline)
+                        .fontWeight(showingBeforeAfter ? .regular : .semibold)
+                }
+                .foregroundColor(showingBeforeAfter ? .secondary : .blue)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(showingBeforeAfter ? Color.clear : Color.blue.opacity(0.1))
+                )
+            }
+            
+            Button(action: {
+                withAnimation {
+                    showingBeforeAfter = true
+                }
+            }) {
+                HStack {
+                    Image(systemName: "photo")
+                        .font(.caption)
+                    Text("Original")
+                        .font(.subheadline)
+                        .fontWeight(showingBeforeAfter ? .semibold : .regular)
+                }
+                .foregroundColor(showingBeforeAfter ? .blue : .secondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(showingBeforeAfter ? Color.blue.opacity(0.1) : Color.clear)
+                )
+            }
+            
+            Spacer()
         }
-        .overlay {
-            if editViewModel.isProcessing {
-                Color.black.opacity(0.5)
-                    .ignoresSafeArea()
-                    .overlay(
-                        VStack {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(1.5)
-                            
-                            Text("Enhancing image...")
-                                .foregroundColor(.white)
-                                .padding(.top)
-                        }
+    }
+    
+    // MARK: - Processing Info Section
+    
+    private var processingInfoSection: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Processing Time")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Text(String(format: "%.1f seconds", processingTime))
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("AI Provider")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Text(provider)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(UIColor.secondarySystemBackground))
+        )
+    }
+    
+    // MARK: - Action Buttons Section
+    
+    private var actionButtonsSection: some View {
+        VStack(spacing: 12) {
+            // Primary Actions
+            HStack(spacing: 12) {
+                Button(action: saveToPhotos) {
+                    HStack {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("Save to Photos")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                
+                Button(action: { showingShareSheet = true }) {
+                    HStack {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Share")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .foregroundColor(.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            
+            // Edit Again Button
+            Button(action: {
+                dismiss()
+            }) {
+                HStack {
+                    Image(systemName: "wand.and.stars")
+                    Text("Edit Again")
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color(UIColor.secondarySystemBackground))
+                .foregroundColor(.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+    
+    // MARK: - Social Sharing Section
+    
+    private var socialSharingSection: some View {
+        VStack(spacing: 16) {
+            Text("Share to Social Media")
+                .font(.headline)
+            
+            HStack(spacing: 16) {
+                // Instagram Button
+                if socialShareService.isInstagramInstalled() {
+                    SocialShareButton(
+                        platform: .instagram,
+                        action: shareToInstagram
                     )
+                }
+                
+                // TikTok Button
+                if socialShareService.isTikTokInstalled() {
+                    SocialShareButton(
+                        platform: .tiktok,
+                        action: shareToTikTok
+                    )
+                }
+                
+                // More Options Button
+                SocialShareButton(
+                    platform: nil,
+                    action: { showingSocialShare = true }
+                )
             }
+            
+            if !socialShareService.isInstagramInstalled() && !socialShareService.isTikTokInstalled() {
+                Text("Install Instagram or TikTok to share directly")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(UIColor.secondarySystemBackground))
+        )
+    }
+    
+    // MARK: - Metadata Section
+    
+    private var metadataSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Processing Details")
+                .font(.headline)
+            
+            VStack(spacing: 8) {
+                ForEach(Array(metadata.keys.sorted()), id: \.self) { key in
+                    HStack {
+                        Text(key.capitalized)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Text(metadata[key] ?? "")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(UIColor.secondarySystemBackground))
+        )
+    }
+    
+    // MARK: - Social Share Action Sheet
+    
+    private var socialShareActionSheet: ActionSheet {
+        var buttons: [ActionSheet.Button] = []
+        
+        if socialShareService.isInstagramInstalled() {
+            buttons.append(.default(Text("Instagram Stories")) {
+                shareToInstagram()
+            })
+            
+            buttons.append(.default(Text("Instagram Feed")) {
+                shareToInstagramFeed()
+            })
+        }
+        
+        if socialShareService.isTikTokInstalled() {
+            buttons.append(.default(Text("TikTok")) {
+                shareToTikTok()
+            })
+        }
+        
+        buttons.append(.default(Text("More Options")) {
+            showingShareSheet = true
+        })
+        
+        buttons.append(.cancel())
+        
+        return ActionSheet(
+            title: Text("Share Enhanced Photo"),
+            message: Text("Choose where to share your enhanced photo"),
+            buttons: buttons
+        )
+    }
+    
+    // MARK: - Actions
+    
+    private func saveToPhotos() {
+        PHPhotoLibrary.requestAuthorization { status in
+            DispatchQueue.main.async {
+                switch status {
+                case .authorized, .limited:
+                    UIImageWriteToSavedPhotosAlbum(enhancedImage, nil, nil, nil)
+                    showingSaveAlert = true
+                    
+                case .denied, .restricted:
+                    saveError = "Photos access is required to save images. Please enable it in Settings."
+                    
+                case .notDetermined:
+                    saveError = "Photos access permission is required."
+                    
+                @unknown default:
+                    saveError = "Unable to save photo."
+                }
+            }
+        }
+    }
+    
+    private func shareToInstagram() {
+        do {
+            try socialShareService.quickShareToInstagramStories(enhancedImage)
+        } catch {
+            print("Failed to share to Instagram: \(error)")
+            showingShareSheet = true
+        }
+    }
+    
+    private func shareToInstagramFeed() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first,
+              let rootViewController = window.rootViewController else {
+            showingShareSheet = true
+            return
+        }
+        
+        do {
+            try socialShareService.shareToInstagramFeed(image: enhancedImage, from: rootViewController)
+        } catch {
+            print("Failed to share to Instagram Feed: \(error)")
+            showingShareSheet = true
+        }
+    }
+    
+    private func shareToTikTok() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first,
+              let rootViewController = window.rootViewController else {
+            showingShareSheet = true
+            return
+        }
+        
+        do {
+            try socialShareService.quickShareToTikTok(enhancedImage, from: rootViewController)
+        } catch {
+            print("Failed to share to TikTok: \(error)")
+            showingShareSheet = true
         }
     }
 }
 
-// MARK: - Prompt Card
-struct PromptCard: View {
-    let prompt: EditPrompt
+// MARK: - Supporting Views
+
+private struct SocialShareButton: View {
+    let platform: SocialShareService.SocialPlatform?
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: prompt.category.icon)
-                        .foregroundColor(.blue)
-                    
-                    Spacer()
-                    
-                    if prompt.usageCount > 0 {
-                        Text("\(prompt.usageCount) uses")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
+            VStack(spacing: 8) {
+                Image(systemName: iconName)
+                    .font(.title2)
+                    .foregroundColor(iconColor)
                 
-                Text(prompt.text)
-                    .font(.subheadline)
-                    .multilineTextAlignment(.leading)
+                Text(displayName)
+                    .font(.caption)
+                    .fontWeight(.medium)
                     .foregroundColor(.primary)
             }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.systemGray6))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .frame(width: 80, height: 80)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(UIColor.tertiarySystemBackground))
+            )
         }
         .buttonStyle(PlainButtonStyle())
     }
-}
-
-// MARK: - Custom Prompt Input View
-struct CustomPromptInputView: View {
-    @Binding var prompt: String
-    let onApply: () -> Void
-    @Environment(\.dismiss) private var dismiss
     
-    var body: some View {
-        NavigationView {
-            VStack {
-                TextEditor(text: $prompt)
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .padding()
-                
-                Spacer()
-            }
-            .navigationTitle("Custom Prompt")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Apply") {
-                        onApply()
-                        dismiss()
-                    }
-                    .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
+    private var iconName: String {
+        guard let platform = platform else { return "ellipsis" }
+        return platform.iconName
+    }
+    
+    private var iconColor: Color {
+        guard let platform = platform else { return .secondary }
+        return Color(platform.color)
+    }
+    
+    private var displayName: String {
+        guard let platform = platform else { return "More" }
+        return platform.displayName
     }
 }
 
-// MARK: - Share Sheet
-struct ShareSheet: UIViewControllerRepresentable {
+private struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return controller
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Preview
+
 #Preview {
     ResultView(
-        image: UIImage(systemName: "photo")!,
-        originalImage: UIImage(systemName: "photo.fill")!
+        originalImage: UIImage(systemName: "photo")!,
+        enhancedImage: UIImage(systemName: "sparkles")!,
+        provider: "Gemini 2.5 Flash Image",
+        processingTime: 3.2,
+        metadata: [
+            "model": "gemini-2.5-flash-image",
+            "strength": "0.8",
+            "seed": "12345"
+        ]
     )
 }
 
