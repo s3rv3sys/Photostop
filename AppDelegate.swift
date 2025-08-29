@@ -16,11 +16,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         logger.info("PhotoStop launching...")
         
+        // Perform preflight checks
+        Task {
+            let preflightResult = await PreflightChecks.shared.performAllChecks()
+            if !preflightResult.isSuccess {
+                logger.error("Preflight checks failed with \(preflightResult.criticalIssues.count) critical issues")
+                for issue in preflightResult.criticalIssues {
+                    logger.error("Critical: \(issue.message)")
+                }
+            } else {
+                logger.info("Preflight checks passed")
+            }
+        }
+        
         // Configure app appearance
         configureAppearance()
         
         // Initialize core services
         initializeCoreServices()
+        
+        // Initialize memory manager
+        _ = MemoryManager.shared
         
         // Check if this is first launch
         checkFirstLaunch()

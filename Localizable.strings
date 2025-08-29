@@ -1,0 +1,239 @@
+/* 
+  Localizable.strings
+  PhotoStop
+
+  Created by Ishwar Prasad Nagulapalle on 2025-08-29.
+  
+*/
+
+// MARK: - App Name and Branding
+"app_name" = "PhotoStop";
+"app_tagline" = "One-Tap AI Photo Enhancement";
+"app_description" = "Transform your photos with AI in seconds";
+
+// MARK: - Onboarding
+"onboarding_welcome_title" = "Welcome to PhotoStop";
+"onboarding_welcome_subtitle" = "One-tap perfect photos with AI";
+"onboarding_welcome_description" = "Capture moments and let our AI instantly enhance them to perfection. No editing skills required.";
+
+"onboarding_personalization_title" = "AI That Learns";
+"onboarding_personalization_subtitle" = "Gets better with every photo";
+"onboarding_personalization_description" = "Our AI learns your style preferences to deliver results you'll love. All processing happens privately on your device.";
+
+"onboarding_sharing_title" = "Share Instantly";
+"onboarding_sharing_subtitle" = "Perfect for social media";
+"onboarding_sharing_description" = "One-tap sharing to Instagram Stories, TikTok, and more. Your enhanced photos are ready to wow your followers.";
+
+"onboarding_plans_title" = "Choose Your Plan";
+"onboarding_plans_subtitle" = "Start with 7 days free";
+"onboarding_plans_description" = "Unlock unlimited AI enhancements and premium features with PhotoStop Pro.";
+
+"onboarding_continue" = "Continue";
+"onboarding_skip" = "Skip";
+"onboarding_get_started" = "Get Started";
+
+// MARK: - Authentication
+"auth_sign_in_title" = "Sign In to PhotoStop";
+"auth_sign_in_subtitle" = "Sync your preferences and photos";
+"auth_sign_in_apple" = "Sign in with Apple";
+"auth_sign_in_email" = "Sign in with Email";
+"auth_continue_anonymous" = "Continue without signing in";
+"auth_benefits_title" = "Why sign in?";
+"auth_benefits_sync" = "Sync preferences across devices";
+"auth_benefits_backup" = "Backup your enhanced photos";
+"auth_benefits_personalization" = "Better AI personalization";
+
+// MARK: - Camera
+"camera_title" = "Camera";
+"camera_capture" = "Capture";
+"camera_processing" = "Processing...";
+"camera_flash_on" = "Flash On";
+"camera_flash_off" = "Flash Off";
+"camera_switch_camera" = "Switch Camera";
+"camera_permission_title" = "Camera Access Required";
+"camera_permission_message" = "PhotoStop needs camera access to capture and enhance your photos.";
+"camera_permission_settings" = "Open Settings";
+
+// MARK: - Processing
+"processing_analyzing" = "Analyzing photo...";
+"processing_enhancing" = "Enhancing with AI...";
+"processing_finalizing" = "Finalizing...";
+"processing_complete" = "Enhancement complete!";
+"processing_cancel" = "Cancel";
+
+// MARK: - Results
+"result_title" = "Enhanced Photo";
+"result_save" = "Save";
+"result_share" = "Share";
+"result_edit_more" = "Edit More";
+"result_try_again" = "Try Again";
+"result_before" = "Before";
+"result_after" = "After";
+"result_tap_to_compare" = "Tap to compare";
+"result_enhanced_by" = "Enhanced by %@";
+
+// MARK: - Gallery
+"gallery_title" = "Gallery";
+"gallery_empty_title" = "No Photos Yet";
+"gallery_empty_message" = "Your enhanced photos will appear here";
+"gallery_search" = "Search photos...";
+"gallery_select" = "Select";
+"gallery_delete" = "Delete";
+"gallery_share" = "Share";
+
+// MARK: - Profile
+"profile_title" = "Profile";
+"profile_anonymous" = "Anonymous User";
+"profile_sign_in" = "Sign In";
+"profile_sign_out" = "Sign Out";
+"profile_delete_account" = "Delete Account";
+"profile_subscription" = "Subscription";
+"profile_usage" = "Usage This Month";
+"profile_preferences" = "Preferences";
+
+// MARK: - Settings
+"settings_title" = "Settings";
+"settings_account" = "Account";
+"settings_subscription" = "Subscription";
+"settings_personalization" = "Personalization";
+"settings_sharing" = "Sharing & Attribution";
+"settings_privacy" = "Privacy";
+"settings_camera" = "Camera";
+"settings_about" = "About";
+
+"settings_watermark" = "AI Watermark";
+"settings_watermark_description" = "Add visible watermark to AI-enhanced photos";
+"settings_attribution" = "PhotoStop Attribution";
+"settings_attribution_description" = "Include PhotoStop branding in shared photos";
+
+"settings_privacy_policy" = "Privacy Policy";
+"settings_terms_of_service" = "Terms of Service";
+"settings_contact_support" = "Contact Support";
+
+// MARK: - Subscription
+"subscription_title" = "PhotoStop Pro";
+"subscription_free_trial" = "7-Day Free Trial";
+"subscription_monthly" = "Monthly";
+"subscription_yearly" = "Yearly";
+"subscription_save_percent" = "Save %d%%";
+"subscription_restore" = "Restore Purchases";
+"subscription_manage" = "Manage Subscription";
+
+"subscription_free_title" = "PhotoStop Free";
+"subscription_free_credits" = "50 budget + 5 premium credits/month";
+"subscription_pro_title" = "PhotoStop Pro";
+"subscription_pro_credits" = "500 budget + 300 premium credits/month";
+
+"subscription_feature_unlimited" = "Unlimited AI enhancements";
+"subscription_feature_premium" = "Premium AI providers";
+"subscription_feature_priority" = "Priority processing";
+"subscription_feature_advanced" = "Advanced editing tools";
+
+// MARK: - Credits
+"credits_title" = "Credits";
+"credits_budget" = "Budget Credits";
+"credits_premium" = "Premium Credits";
+"credits_remaining" = "%d remaining";
+"credits_resets" = "Resets %@";
+"credits_buy_more" = "Buy More Credits";
+"credits_upgrade" = "Upgrade to Pro";
+
+// MARK: - Sharing
+"share_instagram_stories" = "Instagram Stories";
+"share_tiktok" = "TikTok";
+"share_more" = "More...";
+"share_copy_image" = "Copy Image";
+"share_save_to_photos" = "Save to Photos";
+"share_ai_disclosure" = "✨ Edited with AI";
+
+// MARK: - Errors
+"error_title" = "Oops!";
+"error_generic" = "Something went wrong. Please try again.";
+"error_network" = "No internet connection. Please check your network and try again.";
+"error_camera_unavailable" = "Camera is not available on this device.";
+"error_photo_save_failed" = "Failed to save photo. Please check your Photos permissions.";
+"error_ai_processing_failed" = "AI processing failed. Please try again.";
+"error_subscription_failed" = "Subscription purchase failed. Please try again.";
+"error_insufficient_credits" = "Not enough credits. Upgrade to Pro or buy more credits.";
+
+"error_retry" = "Retry";
+"error_dismiss" = "OK";
+"error_upgrade" = "Upgrade";
+"error_buy_credits" = "Buy Credits";
+
+// MARK: - Permissions
+"permission_camera_title" = "Camera Access";
+"permission_camera_message" = "PhotoStop needs camera access to capture photos for AI enhancement.";
+"permission_photos_title" = "Photos Access";
+"permission_photos_message" = "PhotoStop needs Photos access to save your enhanced images.";
+"permission_allow" = "Allow";
+"permission_not_now" = "Not Now";
+
+// MARK: - AI Providers
+"provider_ondevice" = "On-Device";
+"provider_gemini" = "Gemini AI";
+"provider_openai" = "OpenAI";
+"provider_fal" = "Fal.ai";
+"provider_clipdrop" = "Clipdrop";
+
+// MARK: - Edit Types
+"edit_type_enhancement" = "Enhancement";
+"edit_type_portrait" = "Portrait";
+"edit_type_hdr" = "HDR";
+"edit_type_background" = "Background";
+"edit_type_cleanup" = "Cleanup";
+"edit_type_creative" = "Creative";
+"edit_type_local" = "Local Edit";
+
+// MARK: - Paywall
+"paywall_title" = "Upgrade to Pro";
+"paywall_subtitle" = "Unlock unlimited AI enhancements";
+"paywall_insufficient_credits_title" = "Out of Credits";
+"paywall_insufficient_credits_subtitle" = "Upgrade to Pro or buy more credits";
+"paywall_premium_feature_title" = "Premium Feature";
+"paywall_premium_feature_subtitle" = "This feature requires PhotoStop Pro";
+
+"paywall_start_trial" = "Start 7-Day Free Trial";
+"paywall_subscribe" = "Subscribe";
+"paywall_buy_credits" = "Buy Credits";
+"paywall_maybe_later" = "Maybe Later";
+
+// MARK: - Success Messages
+"success_photo_saved" = "Photo saved to your library";
+"success_photo_shared" = "Photo shared successfully";
+"success_subscription_activated" = "PhotoStop Pro activated!";
+"success_credits_purchased" = "Credits added to your account";
+
+// MARK: - Loading States
+"loading_please_wait" = "Please wait...";
+"loading_processing_image" = "Processing image...";
+"loading_saving_photo" = "Saving photo...";
+"loading_sharing_photo" = "Sharing photo...";
+
+// MARK: - Accessibility
+"accessibility_capture_button" = "Capture photo";
+"accessibility_flash_toggle" = "Toggle flash";
+"accessibility_camera_switch" = "Switch camera";
+"accessibility_before_after" = "Before and after comparison";
+"accessibility_share_button" = "Share photo";
+"accessibility_save_button" = "Save photo";
+
+// MARK: - Time Formats
+"time_just_now" = "Just now";
+"time_minutes_ago" = "%d minutes ago";
+"time_hours_ago" = "%d hours ago";
+"time_days_ago" = "%d days ago";
+"time_weeks_ago" = "%d weeks ago";
+
+// MARK: - File Sizes
+"file_size_bytes" = "%d bytes";
+"file_size_kb" = "%.1f KB";
+"file_size_mb" = "%.1f MB";
+"file_size_gb" = "%.1f GB";
+
+// MARK: - About
+"about_version" = "Version %@";
+"about_build" = "Build %@";
+"about_copyright" = "© 2025 Servesys Corporation";
+"about_made_with_love" = "Made with ❤️ in Texas";
+
